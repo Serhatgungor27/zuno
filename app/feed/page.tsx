@@ -42,7 +42,21 @@ type TrendingTrack = {
   count: number;
 };
 
-type Tab = "global" | "following" | "vibe" | "trending";
+type Tab = "global" | "following" | "vibe" | "trending" | "discover";
+
+type DiscoverTrack = {
+  trackId: string;
+  name: string;
+  artist: string;
+  album: string;
+  albumImage: string | null;
+  previewUrl: string | null;
+  spotifyUrl: string;
+  deezerUrl: string;
+  durationMs: number;
+  rank: number;
+  explicit: boolean;
+};
 
 function timeAgo(dateStr: string) {
   const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
@@ -714,11 +728,260 @@ function TrendingRow({ track, rank }: { track: TrendingTrack; rank: number }) {
   );
 }
 
+// ── Discover Card ─────────────────────────────────────────────────────────────
+function DiscoverCard({ track, sessionId }: { track: DiscoverTrack; sessionId: string }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const enterTimeRef = useRef<number | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [liked, setLiked] = useState(false);
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [showVideo, setShowVideo] = useState(false);
+  const [isActive, setIsActive] = useState(false);
+
+  const logInteraction = (action: string, timeSpentMs = 0) => {
+    fetch("/api/discover/interact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, trackId: track.trackId, artist: track.artist, action, timeSpentMs }),
+    }).catch(() => {});
+  };
+
+  // Fetch YouTube video ID when card first mounts
+  useEffect(() => {
+    fetch(`/api/discover/youtube?track=${encodeURIComponent(track.name)}&artist=${encodeURIComponent(track.artist)}`)
+      .then(r => r.json())
+      .then(d => { if (d.videoId) setVideoId(d.videoId); })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track.trackId]);
+
+  // Intersection observer — auto-play preview + track view time
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const visible = entry.intersectionRatio >= 0.75;
+        setIsActive(visible);
+        if (visible) {
+          enterTimeRef.current = Date.now();
+          logInteraction("view");
+          // Auto-play preview when card enters view
+          if (track.previewUrl && audioRef.current) {
+            audioRef.current.play().catch(() => {});
+            setIsPlaying(true);
+          }
+          // Show YouTube video
+          if (videoId) setShowVideo(true);
+        } else {
+          if (enterTimeRef.current) {
+            logInteraction("view_end", Date.now() - enterTimeRef.current);
+            enterTimeRef.current = null;
+          }
+          if (audioRef.current) {
+            audioRef.current.pause();
+            setIsPlaying(false);
+          }
+          setShowVideo(false);
+        }
+      },
+      { threshold: [0, 0.75] }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track.trackId, videoId]);
+
+  // Init audio when track mounts
+  useEffect(() => {
+    if (!track.previewUrl) return;
+    const audio = new Audio(track.previewUrl);
+    audio.addEventListener("timeupdate", () => {
+      setProgress((audio.currentTime / audio.duration) * 100);
+    });
+    audio.addEventListener("ended", () => {
+      setIsPlaying(false);
+      setProgress(0);
+    });
+    audioRef.current = audio;
+    return () => {
+      audio.pause();
+      audioRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track.trackId]);
+
+  const togglePlay = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      audioRef.current.play().catch(() => {});
+      setIsPlaying(true);
+    }
+  };
+
+  const handleLike = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const next = !liked;
+    setLiked(next);
+    logInteraction(next ? "like" : "unlike");
+  };
+
+  const handleOpenSpotify = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    logInteraction("open_spotify");
+    window.open(track.spotifyUrl, "_blank");
+  };
+
+  return (
+    <div
+      ref={cardRef}
+      className="relative flex-shrink-0 overflow-hidden bg-black"
+      style={{ height: "calc(100svh - 112px)", width: "100%" }}
+    >
+      {/* YouTube video background — muted, loops, shows when active + videoId available */}
+      {videoId && showVideo && (
+        <iframe
+          key={videoId}
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none scale-125"
+          style={{ border: "none", filter: "brightness(0.4)" }}
+          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1`}
+          allow="autoplay"
+        />
+      )}
+
+      {/* Blurred album art background (fallback when no video) */}
+      {track.albumImage && (!videoId || !showVideo) && (
+        <>
+          <div
+            className="absolute inset-0 bg-cover bg-center scale-110"
+            style={{ backgroundImage: `url(${track.albumImage})`, filter: "blur(40px) brightness(0.35)" }}
+          />
+          <div className="absolute inset-0 bg-black/20" />
+        </>
+      )}
+
+      {/* Dark gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40 z-10" />
+
+      {/* Center content */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center px-8 z-20">
+        {/* Album art — shown always, smaller when video plays */}
+        {track.albumImage && (
+          <div
+            className={`rounded-2xl shadow-2xl overflow-hidden mb-6 cursor-pointer transition-all duration-500 ${videoId && showVideo ? "w-32 h-32 opacity-80" : "w-56 h-56"}`}
+            onClick={togglePlay}
+          >
+            <img src={track.albumImage} alt={track.name} className="w-full h-full object-cover" />
+          </div>
+        )}
+
+        {/* Track info */}
+        <p className="text-white font-bold text-xl text-center mb-1 drop-shadow-lg line-clamp-2">{track.name}</p>
+        <p className="text-white/70 text-sm text-center mb-1">{track.artist}</p>
+        <p className="text-white/30 text-xs text-center mb-5">{track.album}</p>
+
+        {/* Preview progress bar */}
+        {track.previewUrl && (
+          <div className="w-48 h-0.5 bg-white/20 rounded-full mb-5 overflow-hidden cursor-pointer" onClick={togglePlay}>
+            <div
+              className="h-full bg-white/60 rounded-full transition-all duration-300"
+              style={{ width: isPlaying ? `${progress}%` : "0%" }}
+            />
+          </div>
+        )}
+
+        {/* Open in Spotify CTA */}
+        <button
+          onClick={handleOpenSpotify}
+          className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] active:scale-95 text-black font-bold px-6 py-2.5 rounded-full transition-all text-sm shadow-lg"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+          </svg>
+          Open in Spotify
+        </button>
+
+        {/* Play/pause hint */}
+        {track.previewUrl && (
+          <button onClick={togglePlay} className="mt-3 text-white/30 text-xs flex items-center gap-1.5 hover:text-white/60 transition-colors">
+            {isPlaying ? (
+              <><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> Playing preview</>
+            ) : (
+              <><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> Tap to preview</>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* Right sidebar */}
+      <div className="absolute right-3 bottom-8 z-30 flex flex-col items-center gap-5">
+        {/* Like */}
+        <button onClick={handleLike} className="flex flex-col items-center gap-1">
+          <div className={`w-11 h-11 rounded-full bg-black/40 backdrop-blur-sm border flex items-center justify-center transition-transform active:scale-125 ${liked ? "border-red-500/60" : "border-white/10"}`}>
+            <svg className={`w-5 h-5 transition-colors ${liked ? "text-red-400 fill-red-400" : "text-white fill-none"}`}
+              stroke={liked ? "none" : "currentColor"} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+          </div>
+        </button>
+
+        {/* Share */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            logInteraction("share");
+            navigator.share?.({ title: track.name, text: `${track.name} — ${track.artist}`, url: track.spotifyUrl })
+              .catch(() => navigator.clipboard?.writeText(track.spotifyUrl));
+          }}
+          className="flex flex-col items-center gap-1"
+        >
+          <div className="w-11 h-11 rounded-full bg-black/40 backdrop-blur-sm border border-white/10 flex items-center justify-center">
+            <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+            </svg>
+          </div>
+        </button>
+      </div>
+
+      {/* Discover label */}
+      <div className="absolute top-4 left-4 z-30">
+        <span className="text-white/30 text-xs font-semibold tracking-widest uppercase">Discover</span>
+      </div>
+
+      {/* Explicit badge */}
+      {track.explicit && (
+        <div className="absolute top-4 right-4 z-30">
+          <span className="text-white/30 text-[10px] font-bold border border-white/20 px-1.5 py-0.5 rounded">E</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function FeedPage() {
-  const [tab, setTab] = useState<Tab>("global");
+  const [tab, setTab] = useState<Tab>("discover");
   const [liveUsers, setLiveUsers] = useState<LiveUser[]>([]);
   const [vibeItems, setVibeItems] = useState<VibeItem[]>([]);
   const [trending, setTrending] = useState<TrendingTrack[]>([]);
+  const [discoverTracks, setDiscoverTracks] = useState<DiscoverTrack[]>([]);
+  const [discoverLoading, setDiscoverLoading] = useState(false);
+  const [discoverLoadingMore, setDiscoverLoadingMore] = useState(false);
+  const discoverSentinelRef = useRef<HTMLDivElement>(null);
+  const [sessionId] = useState(() => {
+    if (typeof window === "undefined") return crypto.randomUUID();
+    const key = "zuno_session_id";
+    let id = localStorage.getItem(key);
+    if (!id) { id = crypto.randomUUID(); localStorage.setItem(key, id); }
+    return id;
+  });
   const [loading, setLoading] = useState(true);
   const [myId, setMyId] = useState<string | null>(null);
   const [myImage, setMyImage] = useState<string | null>(null);
@@ -865,6 +1128,11 @@ export default function FeedPage() {
 
   const fetchFeed = useCallback(async () => {
     try {
+      if (tab === "discover") {
+        // Discover tab has its own loader — skip
+        setLoading(false);
+        return;
+      }
       if (tab === "trending") {
         const res = await fetch("/api/feed?type=trending");
         const data = await res.json();
@@ -887,9 +1155,53 @@ export default function FeedPage() {
     fetchFeed();
   }, [fetchFeed]);
 
+  // Load discover tracks when tab is opened
+  useEffect(() => {
+    if (tab !== "discover") return;
+    if (discoverTracks.length > 0) return; // already loaded
+    setDiscoverLoading(true);
+    fetch(`/api/discover?sessionId=${sessionId}`)
+      .then((r) => r.json())
+      .then((d) => { if (d.ok) setDiscoverTracks(d.tracks ?? []); })
+      .catch(() => {})
+      .finally(() => setDiscoverLoading(false));
+  }, [tab, sessionId, discoverTracks.length]);
+
+  // Load more discover tracks when sentinel enters view
+  const loadMoreDiscover = useCallback(() => {
+    if (discoverLoadingMore) return;
+    setDiscoverLoadingMore(true);
+    fetch(`/api/discover?sessionId=${sessionId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.ok && d.tracks?.length) {
+          setDiscoverTracks((prev) => {
+            // Deduplicate against existing tracks
+            const existingIds = new Set(prev.map((t) => t.trackId));
+            const fresh = (d.tracks as DiscoverTrack[]).filter((t) => !existingIds.has(t.trackId));
+            return [...prev, ...fresh];
+          });
+        }
+      })
+      .catch(() => {})
+      .finally(() => setDiscoverLoadingMore(false));
+  }, [sessionId, discoverLoadingMore]);
+
+  // Sentinel observer — triggers when user is 3 cards from the end
+  useEffect(() => {
+    const el = discoverSentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) loadMoreDiscover(); },
+      { threshold: 0.1 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [loadMoreDiscover, discoverTracks.length]);
+
   // Auto-refresh live tabs every 10s
   useEffect(() => {
-    if (tab === "trending" || tab === "vibe") return;
+    if (tab === "trending" || tab === "vibe" || tab === "discover") return;
     const interval = setInterval(fetchFeed, 10_000);
     return () => clearInterval(interval);
   }, [fetchFeed, tab]);
@@ -950,7 +1262,7 @@ export default function FeedPage() {
 
       {/* Tabs */}
       <div className="px-4 pt-3 pb-2 flex items-center gap-1.5 overflow-x-auto scrollbar-none border-b border-white/5">
-        {(["global", "vibe", "following", "trending"] as Tab[]).map((t) => (
+        {(["discover", "global", "vibe", "following", "trending"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -958,13 +1270,49 @@ export default function FeedPage() {
               tab === t ? "bg-white text-black" : "bg-white/8 text-white/50 hover:bg-white/15 hover:text-white"
             }`}
           >
-            {t === "global" ? "🔴 Live" : t === "vibe" ? "✨ Vibe" : t === "following" ? "Following" : "🔥 Trending"}
+            {t === "discover" ? "✦ Discover" : t === "global" ? "🔴 Live" : t === "vibe" ? "✨ Vibe" : t === "following" ? "Following" : "🔥 Trending"}
           </button>
         ))}
       </div>
 
       {/* Content */}
-      {loading ? (
+      {tab === "discover" ? (
+        discoverLoading ? (
+          <div className="flex items-center justify-center" style={{ height: "calc(100svh - 112px)" }}>
+            <div className="flex gap-1.5">
+              {[0,1,2].map(i => (
+                <div key={i} className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+              ))}
+            </div>
+          </div>
+        ) : discoverTracks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center text-center px-6" style={{ height: "calc(100svh - 112px)" }}>
+            <div className="text-5xl mb-4">✦</div>
+            <p className="text-white/60 text-lg font-semibold mb-1">Nothing to discover yet</p>
+            <p className="text-white/30 text-sm">Check back soon</p>
+          </div>
+        ) : (
+          <div className="flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}>
+            {discoverTracks.map((track, i) => (
+              <div key={`${track.trackId}-${i}`} className="snap-start snap-always flex-shrink-0">
+                <DiscoverCard track={track} sessionId={sessionId} />
+              </div>
+            ))}
+            {/* Sentinel — placed 3 cards from end by being after the list */}
+            <div ref={discoverSentinelRef} className="snap-start snap-always flex-shrink-0 flex items-center justify-center" style={{ height: "calc(100svh - 112px)", width: "100%" }}>
+              {discoverLoadingMore ? (
+                <div className="flex gap-1.5">
+                  {[0,1,2].map(i => (
+                    <div key={i} className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-white/20 text-sm">Loading more...</p>
+              )}
+            </div>
+          </div>
+        )
+      ) : loading ? (
         <div className="flex items-center justify-center" style={{ height: "calc(100svh - 112px)" }}>
           <div className="flex gap-1.5">
             {[0,1,2].map(i => (
