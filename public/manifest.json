@@ -1,0 +1,17 @@
+{
+  "name": "zuno",
+  "short_name": "zuno",
+  "description": "See what the world is listening to, live.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}
