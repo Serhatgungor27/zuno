@@ -75,7 +75,7 @@ export default function UserPage() {
   const [stats, setStats] = useState<{
     weeklyTracks: number;
     profileViews: number | null;
-    topTracks: { track_id: string; track_name: string; artist: string; album_image: string | null; count: number }[];
+    topTracks: { track_id: string; track_name: string; artist: string; album_image: string | null; track_url: string | null; count: number }[];
     topArtist: { artist: string; album_image: string | null; count: number } | null;
   } | null>(null);
 
