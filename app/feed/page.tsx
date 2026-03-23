@@ -761,8 +761,9 @@ function DiscoverCard({ track, sessionId }: { track: DiscoverTrack; sessionId: s
           logInteraction("view");
           // Auto-play preview when card enters view
           if (track.previewUrl && audioRef.current) {
-            audioRef.current.play().catch(() => {});
-            setIsPlaying(true);
+            audioRef.current.play()
+              .then(() => setIsPlaying(true))
+              .catch(() => setIsPlaying(false));
           }
           // Lazy-load YouTube video only when this card is active
           if (!videoId) {
@@ -1290,7 +1291,13 @@ export default function FeedPage() {
             <p className="text-white/30 text-sm">Check back soon</p>
           </div>
         ) : (
-          <div className="flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}>
+          <div className="flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}
+            onClick={() => {
+              // Unlock audio context on first tap (required by browser autoplay policy)
+              const audio = document.querySelector("audio");
+              if (audio) { audio.play().catch(() => {}); audio.pause(); }
+            }}
+          >
             {discoverTracks.map((track, i) => (
               <div key={`${track.trackId}-${i}`} className="snap-start snap-always flex-shrink-0">
                 <DiscoverCard track={track} sessionId={sessionId} />
