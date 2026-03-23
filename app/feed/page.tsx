@@ -729,11 +729,12 @@ function TrendingRow({ track, rank }: { track: TrendingTrack; rank: number }) {
 }
 
 // ── Discover Card ─────────────────────────────────────────────────────────────
-function DiscoverCard({ track, sessionId }: { track: DiscoverTrack; sessionId: string }) {
+function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: DiscoverTrack; sessionId: string; audioUnlocked: boolean; onUnlock: () => void }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const enterTimeRef = useRef<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [progress, setProgress] = useState(0);
   const [liked, setLiked] = useState(false);
   const [videoId, setVideoId] = useState<string | null>(null);
@@ -759,8 +760,10 @@ function DiscoverCard({ track, sessionId }: { track: DiscoverTrack; sessionId: s
         if (visible) {
           enterTimeRef.current = Date.now();
           logInteraction("view");
-          // Auto-play preview when card enters view
+          // Auto-play preview muted (browsers allow muted autoplay)
           if (track.previewUrl && audioRef.current) {
+            audioRef.current.muted = !audioUnlocked;
+            setIsMuted(!audioUnlocked);
             audioRef.current.play()
               .then(() => setIsPlaying(true))
               .catch(() => setIsPlaying(false));
@@ -793,10 +796,19 @@ function DiscoverCard({ track, sessionId }: { track: DiscoverTrack; sessionId: s
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track.trackId, videoId]);
 
-  // Init audio when track mounts
+  // Unmute when audio gets unlocked globally
+  useEffect(() => {
+    if (audioUnlocked && audioRef.current) {
+      audioRef.current.muted = false;
+      setIsMuted(false);
+    }
+  }, [audioUnlocked]);
+
+  // Init audio when track mounts (muted by default for autoplay policy)
   useEffect(() => {
     if (!track.previewUrl) return;
     const audio = new Audio(track.previewUrl);
+    audio.muted = true; // start muted — unmuted on first user tap
     audio.addEventListener("timeupdate", () => {
       setProgress((audio.currentTime / audio.duration) * 100);
     });
@@ -906,15 +918,30 @@ function DiscoverCard({ track, sessionId }: { track: DiscoverTrack; sessionId: s
           Open in Spotify
         </button>
 
-        {/* Play/pause hint */}
+        {/* Play/mute controls */}
         {track.previewUrl && (
-          <button onClick={togglePlay} className="mt-3 text-white/30 text-xs flex items-center gap-1.5 hover:text-white/60 transition-colors">
-            {isPlaying ? (
-              <><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> Playing preview</>
+          <div className="mt-3 flex items-center gap-3">
+            {isPlaying && isMuted ? (
+              <button
+                onClick={() => {
+                  onUnlock();
+                  if (audioRef.current) { audioRef.current.muted = false; setIsMuted(false); }
+                }}
+                className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white text-xs font-medium px-3 py-1.5 rounded-full hover:bg-white/20 transition-all active:scale-95"
+              >
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
+                Tap to unmute
+              </button>
             ) : (
-              <><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> Tap to preview</>
+              <button onClick={togglePlay} className="text-white/30 text-xs flex items-center gap-1.5 hover:text-white/60 transition-colors">
+                {isPlaying ? (
+                  <><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> Playing preview</>
+                ) : (
+                  <><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> Tap to preview</>
+                )}
+              </button>
             )}
-          </button>
+          </div>
         )}
       </div>
 
@@ -974,6 +1001,8 @@ export default function FeedPage() {
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverLoadingMore, setDiscoverLoadingMore] = useState(false);
   const discoverSentinelRef = useRef<HTMLDivElement>(null);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const audioUnlockedRef = useRef(false);
   const [sessionId] = useState(() => {
     if (typeof window === "undefined") return crypto.randomUUID();
     const key = "zuno_session_id";
@@ -1291,16 +1320,15 @@ export default function FeedPage() {
             <p className="text-white/30 text-sm">Check back soon</p>
           </div>
         ) : (
-          <div className="flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}
-            onClick={() => {
-              // Unlock audio context on first tap (required by browser autoplay policy)
-              const audio = document.querySelector("audio");
-              if (audio) { audio.play().catch(() => {}); audio.pause(); }
-            }}
-          >
+          <div className="flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}>
             {discoverTracks.map((track, i) => (
               <div key={`${track.trackId}-${i}`} className="snap-start snap-always flex-shrink-0">
-                <DiscoverCard track={track} sessionId={sessionId} />
+                <DiscoverCard
+                  track={track}
+                  sessionId={sessionId}
+                  audioUnlocked={audioUnlocked}
+                  onUnlock={() => { setAudioUnlocked(true); audioUnlockedRef.current = true; }}
+                />
               </div>
             ))}
             {/* Sentinel — placed 3 cards from end by being after the list */}
