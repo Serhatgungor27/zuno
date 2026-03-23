@@ -1320,7 +1320,20 @@ export default function FeedPage() {
             <p className="text-white/30 text-sm">Check back soon</p>
           </div>
         ) : (
-          <div className="flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}>
+          <div className="relative flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}>
+            {/* One-time tap-to-start overlay — unlocks audio on first session visit */}
+            {!audioUnlocked && (
+              <div
+                className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm cursor-pointer"
+                onClick={() => { setAudioUnlocked(true); audioUnlockedRef.current = true; }}
+              >
+                <div className="w-20 h-20 rounded-full bg-white/10 border border-white/20 flex items-center justify-center mb-4 backdrop-blur-sm">
+                  <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                </div>
+                <p className="text-white font-semibold text-lg">Tap to start</p>
+                <p className="text-white/40 text-sm mt-1">Preview songs as you scroll</p>
+              </div>
+            )}
             {discoverTracks.map((track, i) => (
               <div key={`${track.trackId}-${i}`} className="snap-start snap-always flex-shrink-0">
                 <DiscoverCard
