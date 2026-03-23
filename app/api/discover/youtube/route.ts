@@ -3,9 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-// YouTube Data API v3 — requires YOUTUBE_API_KEY env var
-// Free tier: 10,000 units/day. A search costs 100 units → 100 searches/day free
-// Results are cached in Supabase youtube_cache so each track is only looked up once
+// YouTube Data API v3 — 10,000 units/day free, 100 units per search
+// Results cached in Supabase youtube_cache so each track is only ever looked up once
 
 const supabase = createClient(
   process.env.SUPABASE_URL!,
@@ -27,7 +26,7 @@ export async function GET(req: Request) {
 
   const key = cacheKey(track, artist);
 
-  // 1. Check cache first
+  // 1. Check Supabase cache first — no API cost
   const { data: cached } = await supabase
     .from("youtube_cache")
     .select("video_id")
@@ -35,13 +34,13 @@ export async function GET(req: Request) {
     .single();
 
   if (cached) {
-    return NextResponse.json({ ok: true, videoId: cached.video_id, cached: true });
+    return NextResponse.json({ ok: true, videoId: cached.video_id });
   }
 
   // 2. Cache miss — call YouTube API
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ ok: false, videoId: null, reason: "no_key", env_keys: Object.keys(process.env).filter(k => k.includes('YOU')) });
+    return NextResponse.json({ ok: false, videoId: null });
   }
 
   try {
@@ -49,19 +48,20 @@ export async function GET(req: Request) {
     const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&videoCategoryId=10&maxResults=1&key=${apiKey}`;
 
     const res = await fetch(url, { cache: "no-store" });
+
+    // Quota exceeded or other error — fail gracefully, don't cache
     if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      return NextResponse.json({ ok: false, videoId: null, status: res.status, error: errText.slice(0, 200) });
+      return NextResponse.json({ ok: false, videoId: null });
     }
 
     const data = await res.json();
     const videoId = data.items?.[0]?.id?.videoId ?? null;
 
-    // 3. Save to cache (even if null, to avoid repeated failed lookups)
+    // Cache result (even null) so we never look up this track again
     await supabase.from("youtube_cache").insert({ track_key: key, video_id: videoId });
 
-    return NextResponse.json({ ok: true, videoId, cached: false });
-  } catch (err) {
-    return NextResponse.json({ ok: false, videoId: null, caught: String(err) });
+    return NextResponse.json({ ok: true, videoId });
+  } catch {
+    return NextResponse.json({ ok: false, videoId: null });
   }
 }

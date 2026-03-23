@@ -748,16 +748,7 @@ function DiscoverCard({ track, sessionId }: { track: DiscoverTrack; sessionId: s
     }).catch(() => {});
   };
 
-  // Fetch YouTube video ID when card first mounts
-  useEffect(() => {
-    fetch(`/api/discover/youtube?track=${encodeURIComponent(track.name)}&artist=${encodeURIComponent(track.artist)}`)
-      .then(r => r.json())
-      .then(d => { if (d.videoId) setVideoId(d.videoId); })
-      .catch(() => {});
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [track.trackId]);
-
-  // Intersection observer — auto-play preview + track view time
+  // Intersection observer — auto-play preview + lazy-load YouTube video
   useEffect(() => {
     const el = cardRef.current;
     if (!el) return;
@@ -773,8 +764,15 @@ function DiscoverCard({ track, sessionId }: { track: DiscoverTrack; sessionId: s
             audioRef.current.play().catch(() => {});
             setIsPlaying(true);
           }
-          // Show YouTube video
-          if (videoId) setShowVideo(true);
+          // Lazy-load YouTube video only when this card is active
+          if (!videoId) {
+            fetch(`/api/discover/youtube?track=${encodeURIComponent(track.name)}&artist=${encodeURIComponent(track.artist)}`)
+              .then(r => r.json())
+              .then(d => { if (d.videoId) { setVideoId(d.videoId); setShowVideo(true); } })
+              .catch(() => {});
+          } else {
+            setShowVideo(true);
+          }
         } else {
           if (enterTimeRef.current) {
             logInteraction("view_end", Date.now() - enterTimeRef.current);
