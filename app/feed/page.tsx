@@ -1000,6 +1000,7 @@ export default function FeedPage() {
   const [discoverTracks, setDiscoverTracks] = useState<DiscoverTrack[]>([]);
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverLoadingMore, setDiscoverLoadingMore] = useState(false);
+  const [discoverPage, setDiscoverPage] = useState(1);
   const discoverSentinelRef = useRef<HTMLDivElement>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const audioUnlockedRef = useRef(false);
@@ -1195,25 +1196,26 @@ export default function FeedPage() {
       .finally(() => setDiscoverLoading(false));
   }, [tab, sessionId, discoverTracks.length]);
 
-  // Load more discover tracks when sentinel enters view
+  // Load more discover tracks when sentinel enters view — increments page for fresh genres
   const loadMoreDiscover = useCallback(() => {
     if (discoverLoadingMore) return;
     setDiscoverLoadingMore(true);
-    fetch(`/api/discover?sessionId=${sessionId}`)
+    const nextPage = discoverPage;
+    fetch(`/api/discover?sessionId=${sessionId}&page=${nextPage}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.ok && d.tracks?.length) {
           setDiscoverTracks((prev) => {
-            // Deduplicate against existing tracks
             const existingIds = new Set(prev.map((t) => t.trackId));
             const fresh = (d.tracks as DiscoverTrack[]).filter((t) => !existingIds.has(t.trackId));
             return [...prev, ...fresh];
           });
+          setDiscoverPage((p) => p + 1);
         }
       })
       .catch(() => {})
       .finally(() => setDiscoverLoadingMore(false));
-  }, [sessionId, discoverLoadingMore]);
+  }, [sessionId, discoverLoadingMore, discoverPage]);
 
   // Sentinel observer — triggers when user is 3 cards from the end
   useEffect(() => {
@@ -1321,18 +1323,15 @@ export default function FeedPage() {
           </div>
         ) : (
           <div className="relative flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}>
-            {/* One-time tap-to-start overlay — unlocks audio on first session visit */}
+            {/* Floating unmute pill — shown until user taps it */}
             {!audioUnlocked && (
-              <div
-                className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm cursor-pointer"
+              <button
+                className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-black/70 backdrop-blur-sm border border-white/20 text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg"
                 onClick={() => { setAudioUnlocked(true); audioUnlockedRef.current = true; }}
               >
-                <div className="w-20 h-20 rounded-full bg-white/10 border border-white/20 flex items-center justify-center mb-4 backdrop-blur-sm">
-                  <svg className="w-8 h-8 text-white ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                </div>
-                <p className="text-white font-semibold text-lg">Tap to start</p>
-                <p className="text-white/40 text-sm mt-1">Preview songs as you scroll</p>
-              </div>
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                Tap to play with sound
+              </button>
             )}
             {discoverTracks.map((track, i) => (
               <div key={`${track.trackId}-${i}`} className="snap-start snap-always flex-shrink-0">
