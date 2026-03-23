@@ -41,7 +41,7 @@ export async function GET(req: Request) {
   // 2. Cache miss — call YouTube API
   const apiKey = process.env.YOUTUBE_API_KEY;
   if (!apiKey) {
-    return NextResponse.json({ ok: false, videoId: null, reason: "no_key" });
+    return NextResponse.json({ ok: false, videoId: null, reason: "no_key", env_keys: Object.keys(process.env).filter(k => k.includes('YOU')) });
   }
 
   try {
@@ -61,7 +61,7 @@ export async function GET(req: Request) {
     await supabase.from("youtube_cache").insert({ track_key: key, video_id: videoId });
 
     return NextResponse.json({ ok: true, videoId, cached: false });
-  } catch {
-    return NextResponse.json({ ok: false, videoId: null });
+  } catch (err) {
+    return NextResponse.json({ ok: false, videoId: null, caught: String(err) });
   }
 }
