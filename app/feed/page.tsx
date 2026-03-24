@@ -1315,12 +1315,12 @@ export default function FeedPage() {
         {/* Center: TikTok-style tabs — constrained to middle column, never overlaps sides */}
         <div className="flex items-center justify-center gap-7">
           {(["vibe", "discover", "trending"] as Tab[]).map((t) => (
-            <button key={t} onClick={() => setTab(t)} className="relative pb-1.5 flex flex-col items-center">
+            <button key={t} onClick={() => setTab(t)} className="relative flex items-center">
               <span className={`text-sm font-bold transition-colors duration-200 ${tab === t ? "text-white" : "text-white/40"}`}>
                 {t === "vibe" ? "Vibe" : t === "discover" ? "Discover" : "Trending"}
               </span>
               {tab === t && (
-                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-white rounded-full" />
+                <span className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-white rounded-full" />
               )}
             </button>
           ))}
