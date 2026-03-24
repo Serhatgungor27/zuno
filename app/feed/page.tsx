@@ -885,13 +885,13 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
         />
       )}
 
-      {/* Gradient: strong at bottom so text is readable */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent z-10" />
+      {/* Gradient — tall fade at bottom for readability */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-10" style={{ backgroundImage: "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.5) 30%, transparent 60%)" }} />
 
       {/* Album art — only shown when no video (centered) */}
       {(!videoId || !showVideo) && track.albumImage && (
         <div
-          className="absolute left-1/2 -translate-x-1/2 w-52 h-52 rounded-2xl shadow-2xl overflow-hidden z-20 cursor-pointer"
+          className="absolute left-1/2 w-52 h-52 rounded-2xl shadow-2xl overflow-hidden z-20 cursor-pointer"
           style={{ top: "50%", transform: "translate(-50%, -60%)" }}
           onClick={togglePlay}
         >
@@ -899,71 +899,48 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
         </div>
       )}
 
-      {/* Bottom info block — padding-bottom accounts for browser chrome on mobile */}
-      <div className="absolute left-4 right-16 z-20" style={{ bottom: "max(24px, env(safe-area-inset-bottom, 16px) + 16px)" }}>
-        <p className="text-white font-bold text-xl leading-tight mb-1 drop-shadow-lg line-clamp-2">{track.name}</p>
+      {/* Bottom content — left side */}
+      <div className="absolute left-4 right-20 z-20 pb-8" style={{ bottom: "env(safe-area-inset-bottom, 0px)" }}>
+        <p className="text-white font-bold text-xl leading-tight mb-0.5 drop-shadow-lg line-clamp-2">{track.name}</p>
         <p className="text-white/70 text-sm mb-0.5">{track.artist}</p>
-        <p className="text-white/30 text-xs mb-4">{track.album}</p>
+        <p className="text-white/35 text-xs mb-3">{track.album}</p>
 
-        {/* Preview progress bar */}
+        {/* Full-width progress bar */}
         {track.previewUrl && (
-          <div className="w-44 h-0.5 bg-white/20 rounded-full mb-4 overflow-hidden cursor-pointer" onClick={togglePlay}>
-            <div
-              className="h-full bg-white/70 rounded-full transition-all duration-300"
-              style={{ width: isPlaying ? `${progress}%` : "0%" }}
-            />
+          <div className="h-0.5 bg-white/20 rounded-full mb-4 overflow-hidden cursor-pointer w-full" onClick={togglePlay}>
+            <div className="h-full bg-white/70 rounded-full transition-all duration-300" style={{ width: isPlaying ? `${progress}%` : "0%" }} />
           </div>
         )}
 
-        {/* Action buttons row */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={handleOpenSpotify}
-            className="flex items-center gap-2 bg-[#1DB954] active:scale-95 text-black font-bold px-5 py-2 rounded-full transition-all text-sm shadow-lg"
-          >
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+        {/* Action buttons */}
+        <div className="flex items-center gap-2">
+          <button onClick={handleOpenSpotify} className="flex items-center gap-1.5 bg-[#1DB954] active:scale-95 text-black font-bold px-4 py-2 rounded-full text-sm shadow-lg">
+            <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
             </svg>
             Spotify
           </button>
-
-          {/* YouTube CTA — only shown when a video is available */}
           {videoId && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                logInteraction("open_youtube");
-                window.open(`https://www.youtube.com/watch?v=${videoId}`, "_blank");
-              }}
-              className="flex items-center gap-2 bg-[#FF0000] active:scale-95 text-white font-bold px-5 py-2 rounded-full transition-all text-sm shadow-lg"
-            >
-              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+            <button onClick={(e) => { e.stopPropagation(); logInteraction("open_youtube"); window.open(`https://www.youtube.com/watch?v=${videoId}`, "_blank"); }}
+              className="flex items-center gap-1.5 bg-[#FF0000] active:scale-95 text-white font-bold px-4 py-2 rounded-full text-sm shadow-lg">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
               </svg>
               Full video
             </button>
           )}
-
-          {/* Unmute button — only shown when playing but muted */}
           {isPlaying && isMuted && (
-            <button
-              onClick={() => {
-                onUnlock();
-                if (audioRef.current) { audioRef.current.muted = false; setIsMuted(false); }
-              }}
-              className="flex items-center gap-1.5 bg-white/15 backdrop-blur-sm border border-white/20 text-white text-xs font-medium px-3 py-2 rounded-full active:scale-95 transition-all"
-            >
-              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
-              </svg>
+            <button onClick={() => { onUnlock(); if (audioRef.current) { audioRef.current.muted = false; setIsMuted(false); } }}
+              className="flex items-center gap-1 bg-white/15 backdrop-blur-sm border border-white/20 text-white text-xs font-medium px-3 py-2 rounded-full active:scale-95">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/></svg>
               Unmute
             </button>
           )}
         </div>
       </div>
 
-      {/* Right sidebar */}
-      <div className="absolute right-3 z-30 flex flex-col items-center gap-5" style={{ bottom: "max(24px, env(safe-area-inset-bottom, 16px) + 16px)" }}>
+      {/* Right sidebar — vertically aligned with bottom content */}
+      <div className="absolute right-3 z-30 flex flex-col items-center gap-4 pb-8" style={{ bottom: "env(safe-area-inset-bottom, 0px)" }}>
         {/* Like */}
         <button onClick={handleLike} className="flex flex-col items-center gap-1">
           <div className={`w-11 h-11 rounded-full bg-black/40 backdrop-blur-sm border flex items-center justify-center transition-transform active:scale-125 ${liked ? "border-red-500/60" : "border-white/10"}`}>
@@ -1334,9 +1311,9 @@ export default function FeedPage() {
               )}
             </>
           ) : (
-            <a href="/api/auth/login" className="flex items-center justify-center w-8 h-8 rounded-full bg-green-500 hover:bg-green-400 transition-colors" title="Connect Spotify">
-              <svg className="w-4 h-4 text-black" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/>
+            <a href="/api/auth/login" title="Connect Spotify" className="flex items-center justify-center w-8 h-8 rounded-full border border-white/20 text-white/50 hover:border-white/40 hover:text-white/80 transition-all">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
             </a>
           )}
