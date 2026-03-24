@@ -899,8 +899,8 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
         </div>
       )}
 
-      {/* Bottom info block */}
-      <div className="absolute bottom-6 left-4 right-16 z-20">
+      {/* Bottom info block — padding-bottom accounts for browser chrome on mobile */}
+      <div className="absolute left-4 right-16 z-20" style={{ bottom: "max(24px, env(safe-area-inset-bottom, 16px) + 16px)" }}>
         <p className="text-white font-bold text-xl leading-tight mb-1 drop-shadow-lg line-clamp-2">{track.name}</p>
         <p className="text-white/70 text-sm mb-0.5">{track.artist}</p>
         <p className="text-white/30 text-xs mb-4">{track.album}</p>
@@ -963,7 +963,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
       </div>
 
       {/* Right sidebar */}
-      <div className="absolute right-3 bottom-6 z-30 flex flex-col items-center gap-5">
+      <div className="absolute right-3 z-30 flex flex-col items-center gap-5" style={{ bottom: "max(24px, env(safe-area-inset-bottom, 16px) + 16px)" }}>
         {/* Like */}
         <button onClick={handleLike} className="flex flex-col items-center gap-1">
           <div className={`w-11 h-11 rounded-full bg-black/40 backdrop-blur-sm border flex items-center justify-center transition-transform active:scale-125 ${liked ? "border-red-500/60" : "border-white/10"}`}>
@@ -994,14 +994,9 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
         </button>
       </div>
 
-      {/* Top-left: Discover label */}
-      <div className="absolute top-4 left-4 z-30">
-        <span className="text-white/30 text-xs font-semibold tracking-widest uppercase">Discover</span>
-      </div>
-
       {/* Top-right: Explicit badge */}
       {track.explicit && (
-        <div className="absolute top-4 right-4 z-30">
+        <div className="absolute top-14 right-4 z-30">
           <span className="text-white/30 text-[10px] font-bold border border-white/20 px-1.5 py-0.5 rounded">E</span>
         </div>
       )}
@@ -1339,8 +1334,10 @@ export default function FeedPage() {
               )}
             </>
           ) : (
-            <a href="/api/auth/login" className="bg-green-500 hover:bg-green-400 text-black text-sm font-semibold px-4 py-1.5 rounded-full transition-colors">
-              Connect Spotify
+            <a href="/api/auth/login" className="flex items-center justify-center w-8 h-8 rounded-full bg-green-500 hover:bg-green-400 transition-colors" title="Connect Spotify">
+              <svg className="w-4 h-4 text-black" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14.5v-9l6 4.5-6 4.5z"/>
+              </svg>
             </a>
           )}
         </div>
