@@ -73,7 +73,7 @@ function LiveCard({ user }: { user: LiveUser }) {
     <Link
       href={`/u/${user.id}`}
       className="relative w-full flex-shrink-0 overflow-hidden block"
-      style={{ height: "calc(100svh - 112px)" }}
+      style={{ height: "calc(100svh - 52px)" }}
     >
       {user.albumImage ? (
         <div className="absolute inset-0 bg-cover bg-center" style={{ backgroundImage: `url(${user.albumImage})` }} />
@@ -519,7 +519,7 @@ function VibeCard({ item, onActivate, isPlaying, onTogglePlay, isLoggedIn, resto
       <div
         ref={cardRef}
         className="relative w-full flex-shrink-0 overflow-hidden"
-        style={{ height: "calc(100svh - 112px)" }}
+        style={{ height: "calc(100svh - 52px)" }}
       >
         {/* Background */}
         {item.albumImage ? (
@@ -855,7 +855,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
     <div
       ref={cardRef}
       className="relative flex-shrink-0 overflow-hidden bg-black"
-      style={{ height: "calc(100svh - 112px)", width: "100%" }}
+      style={{ height: "100svh", width: "100%" }}
     >
       {/* YouTube video — scale by height so it always covers portrait screens */}
       {videoId && showVideo && (
@@ -866,8 +866,8 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
             top: "50%",
             left: "50%",
             /* Scale to fill height; width = height * (16/9) so it extends beyond edges */
-            width: "calc((100svh - 112px) * 1.7778)",
-            height: "calc(100svh - 112px)",
+            width: "calc(100svh * 1.7778)",
+            height: "100svh",
             transform: "translate(-50%, -50%)",
             border: "none",
             filter: "brightness(0.5)",
@@ -1036,6 +1036,24 @@ export default function FeedPage() {
   const [restoreVibeId, setRestoreVibeId] = useState<string | null>(null);
 
   const vibeScrollRef = useRef<HTMLDivElement>(null);
+
+  // TikTok-style horizontal swipe to switch tabs
+  const NAV_TABS: Tab[] = ["vibe", "discover", "trending"];
+  const swipeStartX = useRef(0);
+  const swipeStartY = useRef(0);
+  const handleSwipeStart = (e: React.TouchEvent) => {
+    swipeStartX.current = e.touches[0].clientX;
+    swipeStartY.current = e.touches[0].clientY;
+  };
+  const handleSwipeEnd = (e: React.TouchEvent) => {
+    const dx = e.changedTouches[0].clientX - swipeStartX.current;
+    const dy = e.changedTouches[0].clientY - swipeStartY.current;
+    if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    const idx = NAV_TABS.indexOf(tab as Tab);
+    if (idx === -1) return;
+    if (dx < 0 && idx < NAV_TABS.length - 1) setTab(NAV_TABS[idx + 1]);
+    if (dx > 0 && idx > 0) setTab(NAV_TABS[idx - 1]);
+  };
 
   // Single Spotify Iframe API controller for Vibe tab — reused across all cards.
   // loadUri() swaps the track (stopping the previous one), then play() starts it.
@@ -1258,14 +1276,35 @@ export default function FeedPage() {
   const isEmpty = isScrollFeed ? scrollData.length === 0 : (tab === "trending" ? trending.length === 0 : false);
 
   return (
-    <main className="min-h-screen bg-black text-white">
+    <main
+      className="min-h-screen bg-black text-white"
+      onTouchStart={handleSwipeStart}
+      onTouchEnd={handleSwipeEnd}
+    >
       {/* Hidden Spotify Iframe API container for Vibe tab */}
       <div ref={vibeContainerRef} aria-hidden="true"
         style={{ position: "fixed", width: 1, height: 1, overflow: "hidden", opacity: 0, pointerEvents: "none", zIndex: -1 }} />
 
-      {/* Header */}
-      <header className="sticky top-0 z-50 bg-black/90 backdrop-blur-xl border-b border-white/5 px-4 py-3 flex items-center justify-between">
+      {/* Header — transparent overlay on discover, solid on other tabs */}
+      <header className={`fixed top-0 left-0 right-0 z-50 px-4 py-3 flex items-center justify-between transition-all duration-300 ${
+        tab === "discover" ? "bg-transparent border-transparent" : "bg-black/90 backdrop-blur-xl border-b border-white/5"
+      }`}>
         <h1 className="text-xl font-bold tracking-tight">zuno</h1>
+
+        {/* Center: TikTok-style tabs */}
+        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-7">
+          {(["vibe", "discover", "trending"] as Tab[]).map((t) => (
+            <button key={t} onClick={() => setTab(t)} className="relative pb-1.5 flex flex-col items-center">
+              <span className={`text-sm font-bold transition-colors duration-200 ${tab === t ? "text-white" : "text-white/40"}`}>
+                {t === "vibe" ? "Vibe" : t === "discover" ? "Discover" : "Trending"}
+              </span>
+              {tab === t && (
+                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 w-4 h-0.5 bg-white rounded-full" />
+              )}
+            </button>
+          ))}
+        </div>
+
         <div className="flex items-center gap-3">
           {/* Search */}
           <Link href="/search" className="text-white/30 hover:text-white/60 transition-colors">
@@ -1307,25 +1346,10 @@ export default function FeedPage() {
         </div>
       </header>
 
-      {/* Tabs */}
-      <div className="px-4 pt-3 pb-2 flex items-center gap-1.5 overflow-x-auto scrollbar-none border-b border-white/5">
-        {(["discover", "global", "vibe", "following", "trending"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all duration-200 whitespace-nowrap ${
-              tab === t ? "bg-white text-black" : "bg-white/8 text-white/50 hover:bg-white/15 hover:text-white"
-            }`}
-          >
-            {t === "discover" ? "✦ Discover" : t === "global" ? "🔴 Live" : t === "vibe" ? "✨ Vibe" : t === "following" ? "Following" : "🔥 Trending"}
-          </button>
-        ))}
-      </div>
-
       {/* Content */}
       {tab === "discover" ? (
         discoverLoading ? (
-          <div className="flex items-center justify-center" style={{ height: "calc(100svh - 112px)" }}>
+          <div className="flex items-center justify-center" style={{ height: "100svh" }}>
             <div className="flex gap-1.5">
               {[0,1,2].map(i => (
                 <div key={i} className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
@@ -1333,13 +1357,13 @@ export default function FeedPage() {
             </div>
           </div>
         ) : discoverTracks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center text-center px-6" style={{ height: "calc(100svh - 112px)" }}>
+          <div className="flex flex-col items-center justify-center text-center px-6" style={{ height: "100svh" }}>
             <div className="text-5xl mb-4">✦</div>
             <p className="text-white/60 text-lg font-semibold mb-1">Nothing to discover yet</p>
             <p className="text-white/30 text-sm">Check back soon</p>
           </div>
         ) : (
-          <div className="relative flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}>
+          <div className="relative flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "100svh" }}>
             {discoverTracks.map((track, i) => (
               <div key={`${track.trackId}-${i}`} className="snap-start snap-always flex-shrink-0">
                 <DiscoverCard
@@ -1351,7 +1375,7 @@ export default function FeedPage() {
               </div>
             ))}
             {/* Sentinel — placed 3 cards from end by being after the list */}
-            <div ref={discoverSentinelRef} className="snap-start snap-always flex-shrink-0 flex items-center justify-center" style={{ height: "calc(100svh - 112px)", width: "100%" }}>
+            <div ref={discoverSentinelRef} className="snap-start snap-always flex-shrink-0 flex items-center justify-center" style={{ height: "100svh", width: "100%" }}>
               {discoverLoadingMore ? (
                 <div className="flex gap-1.5">
                   {[0,1,2].map(i => (
@@ -1365,52 +1389,58 @@ export default function FeedPage() {
           </div>
         )
       ) : loading ? (
-        <div className="flex items-center justify-center" style={{ height: "calc(100svh - 112px)" }}>
+        <><div className="h-[52px]" /><div className="flex items-center justify-center" style={{ height: "calc(100svh - 52px)" }}>
           <div className="flex gap-1.5">
             {[0,1,2].map(i => (
               <div key={i} className="w-1.5 h-1.5 rounded-full bg-white/30 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
             ))}
           </div>
-        </div>
+        </div></>
       ) : isEmpty ? (
-        <EmptyState tab={tab} isLoggedIn={isLoggedIn} />
+        <><div className="h-[52px]" /><EmptyState tab={tab} isLoggedIn={isLoggedIn} /></>
       ) : tab === "trending" ? (
-        <div className="px-4 pt-4 pb-12">
+        <div className="px-4 pb-12" style={{ paddingTop: "calc(52px + 16px)" }}>
           <div className="max-w-lg mx-auto">
             <p className="text-white/20 text-xs px-4 mb-2">Most played on Zuno in the last 24h</p>
             {trending.map((t, i) => <TrendingRow key={t.track_id} track={t} rank={i + 1} />)}
           </div>
         </div>
       ) : tab === "vibe" ? (
-        <div ref={vibeScrollRef} className="flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}>
-          {vibeItems.map((item, i) => (
-            <div key={`${item.vibeId || item.id}-${i}`} className="snap-start snap-always flex-shrink-0">
-              <VibeCard
-                item={item}
-                onActivate={playVibePreview}
-                isPlaying={vibeIsPlaying}
-                onTogglePlay={toggleVibePlayback}
-                isLoggedIn={isLoggedIn}
-                restoreComments={item.vibeId === restoreVibeId}
-                myId={myId}
-              />
-            </div>
-          ))}
-          <style>{`
-            @keyframes vibeWave {
-              0%, 100% { transform: scaleY(0.3); opacity: 0.45; }
-              50%       { transform: scaleY(1);   opacity: 1;    }
-            }
-          `}</style>
-        </div>
+        <>
+          <div className="h-[52px]" />
+          <div ref={vibeScrollRef} className="flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 52px)" }}>
+            {vibeItems.map((item, i) => (
+              <div key={`${item.vibeId || item.id}-${i}`} className="snap-start snap-always flex-shrink-0">
+                <VibeCard
+                  item={item}
+                  onActivate={playVibePreview}
+                  isPlaying={vibeIsPlaying}
+                  onTogglePlay={toggleVibePlayback}
+                  isLoggedIn={isLoggedIn}
+                  restoreComments={item.vibeId === restoreVibeId}
+                  myId={myId}
+                />
+              </div>
+            ))}
+            <style>{`
+              @keyframes vibeWave {
+                0%, 100% { transform: scaleY(0.3); opacity: 0.45; }
+                50%       { transform: scaleY(1);   opacity: 1;    }
+              }
+            `}</style>
+          </div>
+        </>
       ) : (
-        <div className="flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}>
-          {liveUsers.map((u) => (
-            <div key={u.spotifyId} className="snap-start snap-always flex-shrink-0">
-              <LiveCard user={u} />
-            </div>
-          ))}
-        </div>
+        <>
+          <div className="h-[52px]" />
+          <div className="flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 52px)" }}>
+            {liveUsers.map((u) => (
+              <div key={u.spotifyId} className="snap-start snap-always flex-shrink-0">
+                <LiveCard user={u} />
+              </div>
+            ))}
+          </div>
+        </>
       )}
     </main>
   );
@@ -1429,7 +1459,7 @@ function EmptyState({ tab, isLoggedIn }: { tab: Tab; isLoggedIn: boolean }) {
   }, [tab]);
 
   return (
-    <div className="flex flex-col items-center justify-center text-center px-6" style={{ height: "calc(100svh - 112px)" }}>
+    <div className="flex flex-col items-center justify-center text-center px-6" style={{ height: "calc(100svh - 52px)" }}>
       <div className="text-5xl mb-4">{tab === "vibe" ? "✨" : tab === "following" ? "👥" : tab === "trending" ? "🔥" : "🎵"}</div>
       {tab === "global" && <>
         <p className="text-white/60 text-lg font-semibold mb-1">No one&apos;s live right now</p>
