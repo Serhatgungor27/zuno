@@ -1286,13 +1286,13 @@ export default function FeedPage() {
         style={{ position: "fixed", width: 1, height: 1, overflow: "hidden", opacity: 0, pointerEvents: "none", zIndex: -1 }} />
 
       {/* Header — transparent overlay on discover, solid on other tabs */}
-      <header className={`fixed top-0 left-0 right-0 z-50 px-4 py-3 flex items-center justify-between transition-all duration-300 ${
+      <header className={`fixed top-0 left-0 right-0 z-50 px-4 py-3 grid grid-cols-[80px_1fr_auto] items-center transition-all duration-300 ${
         tab === "discover" ? "bg-transparent border-transparent" : "bg-black/90 backdrop-blur-xl border-b border-white/5"
       }`}>
         <h1 className="text-xl font-bold tracking-tight">zuno</h1>
 
-        {/* Center: TikTok-style tabs */}
-        <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-7">
+        {/* Center: TikTok-style tabs — constrained to middle column, never overlaps sides */}
+        <div className="flex items-center justify-center gap-7">
           {(["vibe", "discover", "trending"] as Tab[]).map((t) => (
             <button key={t} onClick={() => setTab(t)} className="relative pb-1.5 flex flex-col items-center">
               <span className={`text-sm font-bold transition-colors duration-200 ${tab === t ? "text-white" : "text-white/40"}`}>
@@ -1360,7 +1360,20 @@ export default function FeedPage() {
           <div className="flex flex-col items-center justify-center text-center px-6" style={{ height: "100svh" }}>
             <div className="text-5xl mb-4">✦</div>
             <p className="text-white/60 text-lg font-semibold mb-1">Nothing to discover yet</p>
-            <p className="text-white/30 text-sm">Check back soon</p>
+            <p className="text-white/30 text-sm mb-6">Check back soon</p>
+            <button
+              onClick={() => {
+                setDiscoverLoading(true);
+                fetch(`/api/discover?sessionId=${sessionId}`)
+                  .then((r) => r.json())
+                  .then((d) => { if (d.ok) setDiscoverTracks(d.tracks ?? []); })
+                  .catch(() => {})
+                  .finally(() => setDiscoverLoading(false));
+              }}
+              className="px-5 py-2 rounded-full border border-white/20 text-white/50 text-sm hover:border-white/40 hover:text-white/80 transition-all active:scale-95"
+            >
+              Try again
+            </button>
           </div>
         ) : (
           <div className="relative flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "100svh" }}>
