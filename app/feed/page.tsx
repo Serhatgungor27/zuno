@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
+import { createBrowserClient } from "@supabase/ssr";
 
 import type { SpotifyIFrameAPI, SpotifyEmbedController } from "@/lib/spotify-iframe";
 
@@ -1163,12 +1164,21 @@ export default function FeedPage() {
   }, [vibeIsPlaying]);
 
   useEffect(() => {
-    fetch("/api/user").then((r) => r.json()).then((d) => {
-      if (d.ok) {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (user) {
         setIsLoggedIn(true);
-        setMyId(d.user.username ?? d.user.spotifyId);
-        setMyImage(d.user.image ?? null);
-        // Fetch unread notification count
+        // Fetch profile for username + avatar
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("username, avatar_url")
+          .eq("id", user.id)
+          .single();
+        setMyId(profile?.username ?? user.email ?? user.id);
+        setMyImage(profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null);
         fetch("/api/notifications").then((r) => r.json()).then((nd) => {
           if (nd.ok) {
             setUnreadCount((nd.notifications ?? []).filter((n: { read: boolean }) => !n.read).length);
@@ -1360,11 +1370,11 @@ export default function FeedPage() {
               )}
             </>
           ) : (
-            <a href="/api/auth/login" title="Connect Spotify" className="flex items-center justify-center w-8 h-8 rounded-full border border-white/20 text-white/50 hover:border-white/40 hover:text-white/80 transition-all">
+            <Link href="/auth" title="Sign in" className="flex items-center justify-center w-8 h-8 rounded-full border border-white/20 text-white/50 hover:border-white/40 hover:text-white/80 transition-all">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
-            </a>
+            </Link>
           )}
         </div>
       </header>
