@@ -855,98 +855,96 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
       className="relative flex-shrink-0 overflow-hidden bg-black"
       style={{ height: "calc(100svh - 112px)", width: "100%" }}
     >
-      {/* YouTube video background — muted, loops, shows when active + videoId available */}
+      {/* YouTube video — scale by height so it always covers portrait screens */}
       {videoId && showVideo && (
         <iframe
           key={videoId}
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none scale-125"
-          style={{ border: "none", filter: "brightness(0.4)" }}
+          className="absolute pointer-events-none"
+          style={{
+            top: "50%",
+            left: "50%",
+            /* Scale to fill height; width = height * (16/9) so it extends beyond edges */
+            width: "calc((100svh - 112px) * 1.7778)",
+            height: "calc(100svh - 112px)",
+            transform: "translate(-50%, -50%)",
+            border: "none",
+            filter: "brightness(0.5)",
+          }}
           src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1`}
           allow="autoplay"
         />
       )}
 
       {/* Blurred album art background (fallback when no video) */}
-      {track.albumImage && (!videoId || !showVideo) && (
-        <>
-          <div
-            className="absolute inset-0 bg-cover bg-center scale-110"
-            style={{ backgroundImage: `url(${track.albumImage})`, filter: "blur(40px) brightness(0.35)" }}
-          />
-          <div className="absolute inset-0 bg-black/20" />
-        </>
+      {(!videoId || !showVideo) && track.albumImage && (
+        <div
+          className="absolute inset-0 bg-cover bg-center scale-110"
+          style={{ backgroundImage: `url(${track.albumImage})`, filter: "blur(40px) brightness(0.3)" }}
+        />
       )}
 
-      {/* Dark gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40 z-10" />
+      {/* Gradient: strong at bottom so text is readable */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/10 to-transparent z-10" />
 
-      {/* Center content */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center px-8 z-20">
-        {/* Album art — shown always, smaller when video plays */}
-        {track.albumImage && (
-          <div
-            className={`rounded-2xl shadow-2xl overflow-hidden mb-6 cursor-pointer transition-all duration-500 ${videoId && showVideo ? "w-32 h-32 opacity-80" : "w-56 h-56"}`}
-            onClick={togglePlay}
-          >
-            <img src={track.albumImage} alt={track.name} className="w-full h-full object-cover" />
-          </div>
-        )}
+      {/* Album art — only shown when no video (centered) */}
+      {(!videoId || !showVideo) && track.albumImage && (
+        <div
+          className="absolute left-1/2 -translate-x-1/2 w-52 h-52 rounded-2xl shadow-2xl overflow-hidden z-20 cursor-pointer"
+          style={{ top: "50%", transform: "translate(-50%, -60%)" }}
+          onClick={togglePlay}
+        >
+          <img src={track.albumImage} alt={track.name} className="w-full h-full object-cover" />
+        </div>
+      )}
 
-        {/* Track info */}
-        <p className="text-white font-bold text-xl text-center mb-1 drop-shadow-lg line-clamp-2">{track.name}</p>
-        <p className="text-white/70 text-sm text-center mb-1">{track.artist}</p>
-        <p className="text-white/30 text-xs text-center mb-5">{track.album}</p>
+      {/* Bottom info block */}
+      <div className="absolute bottom-6 left-4 right-16 z-20">
+        <p className="text-white font-bold text-xl leading-tight mb-1 drop-shadow-lg line-clamp-2">{track.name}</p>
+        <p className="text-white/70 text-sm mb-0.5">{track.artist}</p>
+        <p className="text-white/30 text-xs mb-4">{track.album}</p>
 
         {/* Preview progress bar */}
         {track.previewUrl && (
-          <div className="w-48 h-0.5 bg-white/20 rounded-full mb-5 overflow-hidden cursor-pointer" onClick={togglePlay}>
+          <div className="w-44 h-0.5 bg-white/20 rounded-full mb-4 overflow-hidden cursor-pointer" onClick={togglePlay}>
             <div
-              className="h-full bg-white/60 rounded-full transition-all duration-300"
+              className="h-full bg-white/70 rounded-full transition-all duration-300"
               style={{ width: isPlaying ? `${progress}%` : "0%" }}
             />
           </div>
         )}
 
-        {/* Open in Spotify CTA */}
-        <button
-          onClick={handleOpenSpotify}
-          className="flex items-center gap-2 bg-[#1DB954] hover:bg-[#1ed760] active:scale-95 text-black font-bold px-6 py-2.5 rounded-full transition-all text-sm shadow-lg"
-        >
-          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
-          </svg>
-          Open in Spotify
-        </button>
+        {/* Action buttons row */}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleOpenSpotify}
+            className="flex items-center gap-2 bg-[#1DB954] active:scale-95 text-black font-bold px-5 py-2 rounded-full transition-all text-sm shadow-lg"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" />
+            </svg>
+            Open in Spotify
+          </button>
 
-        {/* Play/mute controls */}
-        {track.previewUrl && (
-          <div className="mt-3 flex items-center gap-3">
-            {isPlaying && isMuted ? (
-              <button
-                onClick={() => {
-                  onUnlock();
-                  if (audioRef.current) { audioRef.current.muted = false; setIsMuted(false); }
-                }}
-                className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm border border-white/20 text-white text-xs font-medium px-3 py-1.5 rounded-full hover:bg-white/20 transition-all active:scale-95"
-              >
-                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M16.5 12A4.5 4.5 0 0014 7.97v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg>
-                Tap to unmute
-              </button>
-            ) : (
-              <button onClick={togglePlay} className="text-white/30 text-xs flex items-center gap-1.5 hover:text-white/60 transition-colors">
-                {isPlaying ? (
-                  <><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg> Playing preview</>
-                ) : (
-                  <><svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> Tap to preview</>
-                )}
-              </button>
-            )}
-          </div>
-        )}
+          {/* Unmute button — only shown when playing but muted */}
+          {isPlaying && isMuted && (
+            <button
+              onClick={() => {
+                onUnlock();
+                if (audioRef.current) { audioRef.current.muted = false; setIsMuted(false); }
+              }}
+              className="flex items-center gap-1.5 bg-white/15 backdrop-blur-sm border border-white/20 text-white text-xs font-medium px-3 py-2 rounded-full active:scale-95 transition-all"
+            >
+              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0014 7.97v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+              </svg>
+              Unmute
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Right sidebar */}
-      <div className="absolute right-3 bottom-8 z-30 flex flex-col items-center gap-5">
+      <div className="absolute right-3 bottom-6 z-30 flex flex-col items-center gap-5">
         {/* Like */}
         <button onClick={handleLike} className="flex flex-col items-center gap-1">
           <div className={`w-11 h-11 rounded-full bg-black/40 backdrop-blur-sm border flex items-center justify-center transition-transform active:scale-125 ${liked ? "border-red-500/60" : "border-white/10"}`}>
@@ -977,12 +975,12 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
         </button>
       </div>
 
-      {/* Discover label */}
+      {/* Top-left: Discover label */}
       <div className="absolute top-4 left-4 z-30">
         <span className="text-white/30 text-xs font-semibold tracking-widest uppercase">Discover</span>
       </div>
 
-      {/* Explicit badge */}
+      {/* Top-right: Explicit badge */}
       {track.explicit && (
         <div className="absolute top-4 right-4 z-30">
           <span className="text-white/30 text-[10px] font-bold border border-white/20 px-1.5 py-0.5 rounded">E</span>
@@ -1323,16 +1321,6 @@ export default function FeedPage() {
           </div>
         ) : (
           <div className="relative flex flex-col overflow-y-auto snap-y snap-mandatory" style={{ height: "calc(100svh - 112px)" }}>
-            {/* Floating unmute pill — shown until user taps it */}
-            {!audioUnlocked && (
-              <button
-                className="absolute top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-black/70 backdrop-blur-sm border border-white/20 text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg"
-                onClick={() => { setAudioUnlocked(true); audioUnlockedRef.current = true; }}
-              >
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                Tap to play with sound
-              </button>
-            )}
             {discoverTracks.map((track, i) => (
               <div key={`${track.trackId}-${i}`} className="snap-start snap-always flex-shrink-0">
                 <DiscoverCard
