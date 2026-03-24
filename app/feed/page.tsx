@@ -732,7 +732,9 @@ function TrendingRow({ track, rank }: { track: TrendingTrack; rank: number }) {
 function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: DiscoverTrack; sessionId: string; audioUnlocked: boolean; onUnlock: () => void }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const enterTimeRef = useRef<number | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -740,6 +742,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
   const [videoId, setVideoId] = useState<string | null>(null);
   const [showVideo, setShowVideo] = useState(false);
   const [isActive, setIsActive] = useState(false);
+  const [flashIcon, setFlashIcon] = useState<"play" | "pause" | null>(null);
 
   const logInteraction = (action: string, timeSpentMs = 0) => {
     fetch("/api/discover/interact", {
@@ -826,16 +829,42 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track.trackId]);
 
+  const sendYouTubeCommand = (func: "pauseVideo" | "playVideo") => {
+    iframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: "command", func, args: [] }), "*"
+    );
+  };
+
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
+      sendYouTubeCommand("pauseVideo");
     } else {
       audioRef.current.play().catch(() => {});
       setIsPlaying(true);
+      sendYouTubeCommand("playVideo");
     }
+  };
+
+  // TikTok-style card tap — toggle play + show brief center flash icon
+  const handleCardTap = () => {
+    if (!audioRef.current) return;
+    const willPause = isPlaying;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      sendYouTubeCommand("pauseVideo");
+    } else {
+      audioRef.current.play().catch(() => {});
+      setIsPlaying(true);
+      sendYouTubeCommand("playVideo");
+    }
+    setFlashIcon(willPause ? "pause" : "play");
+    if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    flashTimerRef.current = setTimeout(() => setFlashIcon(null), 700);
   };
 
   const handleLike = (e: React.MouseEvent) => {
@@ -856,10 +885,30 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
       ref={cardRef}
       className="relative flex-shrink-0 overflow-hidden bg-black"
       style={{ height: "100svh", width: "100%" }}
+      onClick={handleCardTap}
     >
+      {/* TikTok-style flash icon on tap */}
+      {flashIcon && (
+        <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
+          <div style={{ animation: "iconFlash 0.7s ease-out forwards" }}>
+            {flashIcon === "pause" ? (
+              <svg className="w-20 h-20 text-white drop-shadow-2xl" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+              </svg>
+            ) : (
+              <svg className="w-20 h-20 text-white drop-shadow-2xl" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z"/>
+              </svg>
+            )}
+          </div>
+        </div>
+      )}
+      <style>{`@keyframes iconFlash { 0% { opacity:0; transform:scale(0.6); } 25% { opacity:1; transform:scale(1.1); } 100% { opacity:0; transform:scale(1); } }`}</style>
+
       {/* YouTube video — scale by height so it always covers portrait screens */}
       {videoId && showVideo && (
         <iframe
+          ref={iframeRef}
           key={videoId}
           className="absolute pointer-events-none"
           style={{
@@ -872,7 +921,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
             border: "none",
             filter: "brightness(0.5)",
           }}
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1`}
+          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1&enablejsapi=1`}
           allow="autoplay"
         />
       )}
