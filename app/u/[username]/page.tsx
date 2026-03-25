@@ -131,7 +131,7 @@ export default function ProfilePage() {
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between px-4 pt-12 pb-4">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push("/feed")}
           className="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 active:bg-white/15 transition-all"
           aria-label="Go back"
         >
