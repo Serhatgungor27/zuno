@@ -1,17 +1,24 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/app/lib/supabase/server";
+import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 // GET /api/profile/me
 // Returns current user's profile, auto-creating username if missing.
-// Runs server-side so Supabase session cookie is included → RLS works.
+// Uses service role key for DB writes to bypass RLS.
 export async function GET() {
   const supabase = await createClient();
 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
 
+  // Use admin client for DB writes so RLS never blocks profile creation
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const db = serviceKey
+    ? createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey)
+    : supabase;
+
   // Fetch existing profile
-  const { data: profile } = await supabase
+  const { data: profile } = await db
     .from("profiles")
     .select("username, avatar_url, display_name")
     .eq("id", user.id)
@@ -29,7 +36,7 @@ export async function GET() {
   const raw = (user.email ?? "").split("@")[0].replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 16);
   const username = raw || user.id.slice(0, 8);
 
-  await supabase.from("profiles").upsert(
+  const { error } = await db.from("profiles").upsert(
     {
       id: user.id,
       username,
@@ -38,6 +45,8 @@ export async function GET() {
     },
     { onConflict: "id" }
   );
+
+  if (error) console.error("[profile/me] upsert failed:", error.message);
 
   return NextResponse.json({
     ok: true,

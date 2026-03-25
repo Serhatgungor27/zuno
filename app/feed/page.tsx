@@ -923,7 +923,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
           }}
           src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1&enablejsapi=1`}
           allow="autoplay"
-          onLoad={() => { setTimeout(() => sendYouTubeCommand("playVideo"), 300); }}
+          onLoad={() => { setTimeout(() => sendYouTubeCommand("playVideo"), 1500); }}
         />
       )}
 
