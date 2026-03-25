@@ -28,11 +28,15 @@ export async function GET(req: NextRequest) {
   const db = createClient(url, key);
 
   // 1. Check profiles table (Supabase auth users)
-  const { data: profile } = await db
+  const { data: profile, error: profileError } = await db
     .from("profiles")
     .select("id, username, display_name, avatar_url, bio, created_at")
     .eq("username", username)
     .single();
+
+  if (profileError && profileError.code !== "PGRST116") {
+    console.error("[profile/user] profiles query error:", profileError.code, profileError.message);
+  }
 
   if (profile) return NextResponse.json(profile);
 
