@@ -916,13 +916,14 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
             top: "50%",
             left: "50%",
             /* Scale to fill height; width = height * (16/9) so it extends beyond edges */
+            /* Shift up 60px so YouTube's info bar (Watch Later / Share) is clipped by overflow:hidden */
             width: "calc(100svh * 1.7778)",
-            height: "100svh",
-            transform: "translate(-50%, -50%)",
+            height: "calc(100svh + 120px)",
+            transform: "translate(-50%, calc(-50% - 60px))",
             border: "none",
             filter: "brightness(0.5)",
           }}
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1&enablejsapi=1`}
+          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&rel=0&modestbranding=1&enablejsapi=1&iv_load_policy=3&disablekb=1&fs=0`}
           allow="autoplay"
         />
       )}
@@ -1177,7 +1178,18 @@ export default function FeedPage() {
           .select("username, avatar_url")
           .eq("id", user.id)
           .single();
-        setMyId(profile?.username ?? user.email ?? user.id);
+        let username = profile?.username ?? null;
+        if (!username) {
+          // Auto-generate username from email prefix for users created before trigger
+          const raw = (user.email ?? "").split("@")[0].replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 16);
+          username = raw || user.id.slice(0, 8);
+          // Upsert profile row (may already exist, just missing username)
+          supabase.from("profiles").upsert(
+            { id: user.id, username, display_name: user.user_metadata?.full_name ?? username },
+            { onConflict: "id" }
+          ).catch(() => {});
+        }
+        setMyId(username);
         setMyImage(profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null);
         fetch("/api/notifications").then((r) => r.json()).then((nd) => {
           if (nd.ok) {
