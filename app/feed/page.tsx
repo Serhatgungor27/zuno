@@ -735,6 +735,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const enterTimeRef = useRef<number | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isPlayingRef = useRef(false); // mirror of isPlaying for use inside callbacks
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -829,10 +830,21 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track.trackId]);
 
+  // Keep ref in sync so onLoad callback always sees latest value
+  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
+
   const sendYouTubeCommand = (func: "pauseVideo" | "playVideo") => {
     iframeRef.current?.contentWindow?.postMessage(
       JSON.stringify({ event: "command", func, args: [] }), "*"
     );
+  };
+
+  // When the iframe finishes loading, kick off playback if audio is already playing.
+  // This recovers the lost playVideo command that was sent before the iframe existed.
+  const handleIframeLoad = () => {
+    if (isPlayingRef.current) {
+      setTimeout(() => sendYouTubeCommand("playVideo"), 300);
+    }
   };
 
   const togglePlay = (e: React.MouseEvent) => {
@@ -921,8 +933,9 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
             border: "none",
             filter: "brightness(0.5)",
           }}
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1&enablejsapi=1`}
+          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1`}
           allow="autoplay"
+          onLoad={handleIframeLoad}
         />
       )}
 
