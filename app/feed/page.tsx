@@ -847,6 +847,22 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
     }
   };
 
+  // Listen for YouTube iframe API errors (101/150 = embedding blocked by owner)
+  // and fall back to album art so we never show "Video unavailable".
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      try {
+        const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
+        if (data?.event === "onError" && (data?.info === 100 || data?.info === 101 || data?.info === 150)) {
+          setShowVideo(false);
+          setVideoId(null);
+        }
+      } catch {}
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!audioRef.current) return;
