@@ -36,21 +36,39 @@ export async function GET(req: NextRequest) {
 
   if (profile) return NextResponse.json(profile);
 
-  // 2. Fall back to users table (Spotify OAuth users)
-  const { data: user } = await db
+  // 2. Fall back to users table — match by username column
+  const { data: userByUsername } = await db
     .from("users")
     .select("spotify_id, username, display_name, image, created_at")
     .eq("username", username)
     .single();
 
-  if (user) {
+  if (userByUsername) {
     return NextResponse.json({
-      id: user.spotify_id,
-      username: user.username,
-      display_name: user.display_name ?? null,
-      avatar_url: user.image ?? null,
+      id: userByUsername.spotify_id,
+      username: userByUsername.username,
+      display_name: userByUsername.display_name ?? null,
+      avatar_url: userByUsername.image ?? null,
       bio: null,
-      created_at: user.created_at ?? null,
+      created_at: userByUsername.created_at ?? null,
+    });
+  }
+
+  // 3. Fall back to users table — match by spotify_id (used when username is null)
+  const { data: userBySpotifyId } = await db
+    .from("users")
+    .select("spotify_id, username, display_name, image, created_at")
+    .eq("spotify_id", username)
+    .single();
+
+  if (userBySpotifyId) {
+    return NextResponse.json({
+      id: userBySpotifyId.spotify_id,
+      username: userBySpotifyId.username ?? userBySpotifyId.spotify_id,
+      display_name: userBySpotifyId.display_name ?? null,
+      avatar_url: userBySpotifyId.image ?? null,
+      bio: null,
+      created_at: userBySpotifyId.created_at ?? null,
     });
   }
 
