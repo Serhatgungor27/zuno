@@ -48,18 +48,14 @@ export default function ProfilePage() {
         setCurrentUserId(user.id);
       }
 
-      // Fetch profile by username
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, username, display_name, avatar_url, bio, created_at")
-        .eq("username", username)
-        .single();
-
-      if (error || !data) {
+      // Fetch profile via API (uses service role key server-side, bypasses RLS)
+      const res = await fetch(`/api/profile/user?username=${encodeURIComponent(username)}`);
+      if (!res.ok) {
         setNotFound(true);
         setLoading(false);
         return;
       }
+      const data = await res.json();
 
       setProfile(data);
       setIsOwnProfile(user?.id === data.id);
