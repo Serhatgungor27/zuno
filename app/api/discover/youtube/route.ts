@@ -45,7 +45,7 @@ export async function GET(req: Request) {
 
   try {
     const query = encodeURIComponent(`${track} ${artist} official music video`);
-    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&videoCategoryId=10&maxResults=1&key=${apiKey}`;
+    const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${query}&type=video&videoCategoryId=10&videoEmbeddable=true&maxResults=1&key=${apiKey}`;
 
     const res = await fetch(url, { cache: "no-store" });
 
