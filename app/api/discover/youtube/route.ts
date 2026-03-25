@@ -57,8 +57,10 @@ export async function GET(req: Request) {
     const data = await res.json();
     const videoId = data.items?.[0]?.id?.videoId ?? null;
 
-    // Cache result (even null) so we never look up this track again
-    await supabase.from("youtube_cache").insert({ track_key: key, video_id: videoId });
+    // Only cache successful (non-null) results — failed lookups get retried next time
+    if (videoId) {
+      await supabase.from("youtube_cache").insert({ track_key: key, video_id: videoId });
+    }
 
     return NextResponse.json({ ok: true, videoId });
   } catch {

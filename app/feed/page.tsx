@@ -861,9 +861,13 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
     }
   };
 
-  // TikTok-style card tap — toggle play + show brief center flash icon
+  // TikTok-style card tap — toggle play + unmute on first tap + flash icon
   const handleCardTap = () => {
     if (!audioRef.current) return;
+    // Unlock audio on first tap (removes mute globally)
+    if (!audioUnlocked) onUnlock();
+    audioRef.current.muted = false;
+    setIsMuted(false);
     const willPause = isPlaying;
     if (isPlaying) {
       audioRef.current.pause();
