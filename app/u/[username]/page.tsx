@@ -48,7 +48,21 @@ export default function ProfilePage() {
         setCurrentUserId(user.id);
       }
 
-      // Fetch profile via API (uses service role key server-side, bypasses RLS)
+      // 1. Try profiles table directly (Supabase auth users — public RLS policy)
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("id, username, display_name, avatar_url, bio, created_at")
+        .eq("username", username)
+        .single();
+
+      if (profileRow) {
+        setProfile(profileRow);
+        setIsOwnProfile(user?.id === profileRow.id);
+        setLoading(false);
+        return;
+      }
+
+      // 2. Fall back to API for Spotify OAuth users (users table)
       const res = await fetch(`/api/profile/user?username=${encodeURIComponent(username)}`);
       if (!res.ok) {
         setNotFound(true);
