@@ -861,13 +861,31 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
     }
   };
 
-  // TikTok-style card tap — toggle play + unmute on first tap + flash icon
+  // TikTok-style card tap — unmute on first tap, toggle play/pause after
   const handleCardTap = () => {
     if (!audioRef.current) return;
-    // Unlock audio on first tap (removes mute globally)
+
+    const wasMuted = isMuted;
+
+    // Always unmute on any tap
     if (!audioUnlocked) onUnlock();
     audioRef.current.muted = false;
     setIsMuted(false);
+
+    // First tap was just an unmute — keep playing, don't toggle pause
+    if (wasMuted) {
+      if (!isPlaying) {
+        audioRef.current.play().catch(() => {});
+        setIsPlaying(true);
+        sendYouTubeCommand("playVideo");
+      }
+      setFlashIcon("play");
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      flashTimerRef.current = setTimeout(() => setFlashIcon(null), 700);
+      return;
+    }
+
+    // Subsequent taps toggle play/pause
     const willPause = isPlaying;
     if (isPlaying) {
       audioRef.current.pause();

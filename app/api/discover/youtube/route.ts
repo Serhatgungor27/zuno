@@ -51,6 +51,8 @@ export async function GET(req: Request) {
 
     // Quota exceeded or other error — fail gracefully, don't cache
     if (!res.ok) {
+      const errBody = await res.json().catch(() => ({}));
+      console.error("[youtube] API error", res.status, JSON.stringify(errBody));
       return NextResponse.json({ ok: false, videoId: null });
     }
 
