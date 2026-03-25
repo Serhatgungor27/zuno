@@ -61,7 +61,10 @@ export async function GET(req: Request) {
 
     // Only cache successful (non-null) results — failed lookups get retried next time
     if (videoId) {
-      await supabase.from("youtube_cache").insert({ track_key: key, video_id: videoId });
+      const { error: cacheErr } = await supabase
+        .from("youtube_cache")
+        .upsert({ track_key: key, video_id: videoId }, { onConflict: "track_key" });
+      if (cacheErr) console.error("[youtube] cache insert failed:", cacheErr.code, cacheErr.message);
     }
 
     return NextResponse.json({ ok: true, videoId });
