@@ -916,10 +916,9 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
             top: "50%",
             left: "50%",
             /* Scale to fill height; width = height * (16/9) so it extends beyond edges */
-            /* Shift up 60px so YouTube's info bar (Watch Later / Share) is clipped by overflow:hidden */
             width: "calc(100svh * 1.7778)",
-            height: "calc(100svh + 120px)",
-            transform: "translate(-50%, calc(-50% - 60px))",
+            height: "100svh",
+            transform: "translate(-50%, -50%)",
             border: "none",
             filter: "brightness(0.5)",
           }}
@@ -936,8 +935,8 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
         />
       )}
 
-      {/* Gradient — tall fade at bottom for readability */}
-      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-10" style={{ backgroundImage: "linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.5) 30%, transparent 60%)" }} />
+      {/* Gradient — tall fade at bottom + top overlay to hide YouTube title bar */}
+      <div className="absolute inset-0 z-10" style={{ backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 18%), linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.5) 30%, transparent 60%)" }} />
 
       {/* Album art — only shown when no video (centered) */}
       {(!videoId || !showVideo) && track.albumImage && (
