@@ -4,7 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 export const dynamic = "force-dynamic";
 
 // GET /api/profile/user?username=xxx
-// Fetches a profile by username using admin/anon key (bypasses browser RLS).
+// Fetches a profile by username. Checks `profiles` (Supabase auth users) first,
+// then falls back to `users` (Spotify OAuth users).
 export async function GET(req: NextRequest) {
   const username = req.nextUrl.searchParams.get("username");
   if (!username)
@@ -26,16 +27,33 @@ export async function GET(req: NextRequest) {
 
   const db = createClient(url, key);
 
-  const { data, error } = await db
+  // 1. Check profiles table (Supabase auth users)
+  const { data: profile } = await db
     .from("profiles")
     .select("id, username, display_name, avatar_url, bio, created_at")
     .eq("username", username)
     .single();
 
-  if (error || !data) {
-    console.error("[profile/user] lookup failed:", error?.message, "username:", username);
-    return NextResponse.json({ error: "not found" }, { status: 404 });
+  if (profile) return NextResponse.json(profile);
+
+  // 2. Fall back to users table (Spotify OAuth users)
+  const { data: user } = await db
+    .from("users")
+    .select("spotify_id, username, display_name, image, created_at")
+    .eq("username", username)
+    .single();
+
+  if (user) {
+    return NextResponse.json({
+      id: user.spotify_id,
+      username: user.username,
+      display_name: user.display_name ?? null,
+      avatar_url: user.image ?? null,
+      bio: null,
+      created_at: user.created_at ?? null,
+    });
   }
 
-  return NextResponse.json(data);
+  console.error("[profile/user] not found in profiles or users:", username);
+  return NextResponse.json({ error: "not found" }, { status: 404 });
 }
