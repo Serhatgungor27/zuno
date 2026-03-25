@@ -18,11 +18,13 @@ export async function GET() {
     : supabase;
 
   // Fetch existing profile
-  const { data: profile } = await db
+  const { data: profile, error: selectError } = await db
     .from("profiles")
     .select("username, avatar_url, display_name")
     .eq("id", user.id)
     .single();
+
+  console.log("[profile/me] user.id:", user.id, "serviceKey:", !!process.env.SUPABASE_SERVICE_ROLE_KEY, "selectError:", selectError?.code, selectError?.message, "profile:", profile?.username ?? null);
 
   if (profile?.username) {
     return NextResponse.json({
@@ -46,7 +48,7 @@ export async function GET() {
     { onConflict: "id" }
   );
 
-  if (error) console.error("[profile/me] upsert failed:", error.message);
+  if (error) console.error("[profile/me] upsert failed:", error.code, error.message);
 
   return NextResponse.json({
     ok: true,
