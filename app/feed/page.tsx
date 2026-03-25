@@ -1183,10 +1183,10 @@ export default function FeedPage() {
           const raw = (user.email ?? "").split("@")[0].replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 16);
           username = raw || user.id.slice(0, 8);
           // Upsert profile row (may already exist, just missing username)
-          supabase.from("profiles").upsert(
+          void supabase.from("profiles").upsert(
             { id: user.id, username, display_name: user.user_metadata?.full_name ?? username },
             { onConflict: "id" }
-          ).catch(() => {});
+          );
         }
         setMyId(username);
         setMyImage(profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null);
