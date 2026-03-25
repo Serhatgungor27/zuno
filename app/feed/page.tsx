@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import Link from "next/link";
-import { createBrowserClient } from "@supabase/ssr";
 
 import type { SpotifyIFrameAPI, SpotifyEmbedController } from "@/lib/spotify-iframe";
 
@@ -922,8 +921,9 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
             border: "none",
             filter: "brightness(0.5)",
           }}
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&rel=0&modestbranding=1&enablejsapi=1&iv_load_policy=3&disablekb=1&fs=0`}
+          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1&enablejsapi=1`}
           allow="autoplay"
+          onLoad={() => { setTimeout(() => sendYouTubeCommand("playVideo"), 300); }}
         />
       )}
 
@@ -1164,32 +1164,11 @@ export default function FeedPage() {
   }, [vibeIsPlaying]);
 
   useEffect(() => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
-      if (user) {
+    fetch("/api/profile/me").then((r) => r.json()).then((d) => {
+      if (d.ok) {
         setIsLoggedIn(true);
-        // Fetch profile for username + avatar
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("username, avatar_url")
-          .eq("id", user.id)
-          .single();
-        let username = profile?.username ?? null;
-        if (!username) {
-          // Auto-generate username from email prefix for users created before trigger
-          const raw = (user.email ?? "").split("@")[0].replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 16);
-          username = raw || user.id.slice(0, 8);
-          // Upsert profile row (may already exist, just missing username)
-          void supabase.from("profiles").upsert(
-            { id: user.id, username, display_name: user.user_metadata?.full_name ?? username },
-            { onConflict: "id" }
-          );
-        }
-        setMyId(username);
-        setMyImage(profile?.avatar_url ?? user.user_metadata?.avatar_url ?? null);
+        setMyId(d.username);
+        setMyImage(d.avatar_url ?? null);
         fetch("/api/notifications").then((r) => r.json()).then((nd) => {
           if (nd.ok) {
             setUnreadCount((nd.notifications ?? []).filter((n: { read: boolean }) => !n.read).length);
