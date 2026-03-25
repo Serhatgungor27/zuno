@@ -1,17 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createAdminClient } from "@supabase/supabase-js";
-import { createClient } from "@/app/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
+
+export const dynamic = "force-dynamic";
 
 // GET /api/profile/user?username=xxx
-// Fetches a profile by username using admin client (bypasses RLS for reads).
+// Fetches a profile by username using admin/anon key (bypasses browser RLS).
 export async function GET(req: NextRequest) {
   const username = req.nextUrl.searchParams.get("username");
-  if (!username) return NextResponse.json({ error: "missing username" }, { status: 400 });
+  if (!username)
+    return NextResponse.json({ error: "missing username" }, { status: 400 });
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const db = serviceKey
-    ? createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey)
-    : await createClient();
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  // Prefer service role key (bypasses RLS), fall back to anon key
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !key) {
+    console.error("[profile/user] missing Supabase env vars");
+    return NextResponse.json(
+      { error: "server configuration error" },
+      { status: 500 }
+    );
+  }
+
+  const db = createClient(url, key);
 
   const { data, error } = await db
     .from("profiles")
