@@ -729,7 +729,7 @@ function TrendingRow({ track, rank }: { track: TrendingTrack; rank: number }) {
 }
 
 // ── Discover Card ─────────────────────────────────────────────────────────────
-function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: DiscoverTrack; sessionId: string; audioUnlocked: boolean; onUnlock: () => void }) {
+function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { track: DiscoverTrack; sessionId: string; audioUnlocked: boolean; onUnlock: () => void; onLike?: (trackId: string, artist: string, liked: boolean) => void }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -922,6 +922,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock }: { track: Di
     const next = !liked;
     setLiked(next);
     logInteraction(next ? "like" : "unlike");
+    onLike?.(track.trackId, track.artist, next);
   };
 
   const handleOpenSpotify = (e: React.MouseEvent) => {
@@ -1090,6 +1091,13 @@ export default function FeedPage() {
   const [discoverLoading, setDiscoverLoading] = useState(false);
   const [discoverLoadingMore, setDiscoverLoadingMore] = useState(false);
   const [discoverPage, setDiscoverPage] = useState(1);
+  const [discoverRefreshing, setDiscoverRefreshing] = useState(false);
+  const [likedDiscoverIds, setLikedDiscoverIds] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("zuno_liked_discover") ?? "[]")); } catch { return new Set(); }
+  });
+  const [likedDiscoverArtists, setLikedDiscoverArtists] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("zuno_liked_artists") ?? "[]"); } catch { return []; }
+  });
   const discoverSentinelRef = useRef<HTMLDivElement>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const audioUnlockedRef = useRef(false);
@@ -1290,24 +1298,57 @@ export default function FeedPage() {
     fetchFeed();
   }, [fetchFeed]);
 
+  const handleDiscoverLike = useCallback((trackId: string, artist: string, liked: boolean) => {
+    setLikedDiscoverIds(prev => {
+      const next = new Set(prev);
+      if (liked) next.add(trackId); else next.delete(trackId);
+      try { localStorage.setItem("zuno_liked_discover", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+    setLikedDiscoverArtists(prev => {
+      if (!liked) return prev;
+      const next = [artist, ...prev.filter(a => a !== artist)].slice(0, 10);
+      try { localStorage.setItem("zuno_liked_artists", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const refreshDiscover = useCallback(() => {
+    if (discoverRefreshing || discoverLoading) return;
+    setDiscoverRefreshing(true);
+    setDiscoverTracks([]);
+    setDiscoverPage(1);
+    const excludeIds = [...likedDiscoverIds].join(",");
+    const artistsParam = likedDiscoverArtists.slice(0, 3).join(",");
+    fetch(`/api/discover?sessionId=${sessionId}&page=0${excludeIds ? `&excludeIds=${encodeURIComponent(excludeIds)}` : ""}${artistsParam ? `&artists=${encodeURIComponent(artistsParam)}` : ""}`)
+      .then(r => r.json())
+      .then(d => { if (d.ok) setDiscoverTracks(d.tracks ?? []); })
+      .catch(() => {})
+      .finally(() => setDiscoverRefreshing(false));
+  }, [sessionId, discoverRefreshing, discoverLoading, likedDiscoverIds, likedDiscoverArtists]);
+
   // Load discover tracks when tab is opened
   useEffect(() => {
     if (tab !== "discover") return;
     if (discoverTracks.length > 0) return; // already loaded
     setDiscoverLoading(true);
-    fetch(`/api/discover?sessionId=${sessionId}`)
+    const excludeIds = [...likedDiscoverIds].join(",");
+    const artistsParam = likedDiscoverArtists.slice(0, 3).join(",");
+    fetch(`/api/discover?sessionId=${sessionId}${excludeIds ? `&excludeIds=${encodeURIComponent(excludeIds)}` : ""}${artistsParam ? `&artists=${encodeURIComponent(artistsParam)}` : ""}`)
       .then((r) => r.json())
       .then((d) => { if (d.ok) setDiscoverTracks(d.tracks ?? []); })
       .catch(() => {})
       .finally(() => setDiscoverLoading(false));
-  }, [tab, sessionId, discoverTracks.length]);
+  }, [tab, sessionId, discoverTracks.length, likedDiscoverIds, likedDiscoverArtists]);
 
   // Load more discover tracks when sentinel enters view — increments page for fresh genres
   const loadMoreDiscover = useCallback(() => {
     if (discoverLoadingMore) return;
     setDiscoverLoadingMore(true);
     const nextPage = discoverPage;
-    fetch(`/api/discover?sessionId=${sessionId}&page=${nextPage}`)
+    const excludeIds = [...likedDiscoverIds].join(",");
+    const artistsParam = likedDiscoverArtists.slice(0, 3).join(",");
+    fetch(`/api/discover?sessionId=${sessionId}&page=${nextPage}${excludeIds ? `&excludeIds=${encodeURIComponent(excludeIds)}` : ""}${artistsParam ? `&artists=${encodeURIComponent(artistsParam)}` : ""}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.ok && d.tracks?.length) {
@@ -1321,7 +1362,7 @@ export default function FeedPage() {
       })
       .catch(() => {})
       .finally(() => setDiscoverLoadingMore(false));
-  }, [sessionId, discoverLoadingMore, discoverPage]);
+  }, [sessionId, discoverLoadingMore, discoverPage, likedDiscoverIds, likedDiscoverArtists]);
 
   // Sentinel observer — triggers when user is 3 cards from the end
   useEffect(() => {
@@ -1376,8 +1417,24 @@ export default function FeedPage() {
           ))}
         </div>
 
-        {/* Right: single avatar or sign-in icon — nothing else */}
-        <div className="flex items-center justify-end">
+        {/* Right: refresh on discover, avatar elsewhere */}
+        <div className="flex items-center justify-end gap-2">
+          {tab === "discover" && (
+            <button
+              onClick={refreshDiscover}
+              disabled={discoverRefreshing || discoverLoading}
+              className="w-8 h-8 flex items-center justify-center text-white/60 hover:text-white transition-colors disabled:opacity-30"
+              title="Refresh"
+            >
+              <svg
+                className={`w-5 h-5 ${discoverRefreshing ? "animate-spin" : ""}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+            </button>
+          )}
           {isLoggedIn && myId ? (
             <Link href={`/u/${myId}`}>
               {myImage ? (
@@ -1436,6 +1493,7 @@ export default function FeedPage() {
                   sessionId={sessionId}
                   audioUnlocked={audioUnlocked}
                   onUnlock={() => { setAudioUnlocked(true); audioUnlockedRef.current = true; }}
+                  onLike={handleDiscoverLike}
                 />
               </div>
             ))}

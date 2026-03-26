@@ -45,7 +45,7 @@ const GENRE_GROUPS = [
   [0, 165, 106],   // page 4: Global, R&B, Electro
 ];
 
-// Search queries per page for even more variety
+// Fallback search queries per page for variety
 const SEARCH_QUERIES = [
   "top hits 2025",
   "new music 2025",
@@ -86,12 +86,27 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get("sessionId") ?? "";
   const page = Math.min(parseInt(searchParams.get("page") ?? "0", 10), GENRE_GROUPS.length - 1);
+  const excludeIdsParam = searchParams.get("excludeIds") ?? "";
+  const artistsParam = searchParams.get("artists") ?? "";
+
+  // Parse excluded track IDs (already-liked tracks — never show again)
+  const excludeIds = new Set(excludeIdsParam ? excludeIdsParam.split(",").filter(Boolean) : []);
+
+  // Parse liked artists from client (top 3)
+  const clientArtists = artistsParam ? artistsParam.split(",").filter(Boolean).slice(0, 3) : [];
 
   const genreGroup = GENRE_GROUPS[page];
 
-  // Personalised search query from session interactions
-  let searchQuery = SEARCH_QUERIES[page % SEARCH_QUERIES.length];
-  if (sessionId) {
+  // Build personalized search queries:
+  // 1. Use liked artists from client if available
+  // 2. Fall back to session interactions from DB
+  // 3. Fall back to default queries
+  let searchQueries: string[] = [];
+
+  if (clientArtists.length > 0) {
+    // Use up to 3 liked artists as search queries for personalization
+    searchQueries = clientArtists;
+  } else if (sessionId) {
     try {
       const { data: interactions } = await supabase
         .from("discover_interactions")
@@ -102,25 +117,38 @@ export async function GET(req: Request) {
         .limit(5);
 
       if (interactions && interactions.length > 0) {
-        const artist = (interactions[0].artist as string)?.split(",")[0]?.trim();
-        if (artist) searchQuery = artist;
+        // Get unique artists from recent likes
+        const artists = [...new Set(
+          interactions.map(i => (i.artist as string)?.split(",")[0]?.trim()).filter(Boolean)
+        )].slice(0, 3);
+        searchQueries = artists;
       }
     } catch { /* silent */ }
   }
 
-  // Fetch all 3 genre charts + 1 search in parallel
-  const [tracks0, tracks1, tracks2, searchTracks] = await Promise.all([
+  // Fill remaining search slots with default queries
+  const defaultQuery = SEARCH_QUERIES[page % SEARCH_QUERIES.length];
+  if (searchQueries.length === 0) {
+    searchQueries = [defaultQuery];
+  }
+
+  // Fetch all 3 genre charts + personalized searches in parallel
+  const searchFetches = searchQueries.map(q => searchDeezer(q, 30));
+  const [tracks0, tracks1, tracks2, ...searchResults] = await Promise.all([
     getDeezerChartTracks(genreGroup[0], 50),
     getDeezerChartTracks(genreGroup[1], 50),
     getDeezerChartTracks(genreGroup[2], 50),
-    searchDeezer(searchQuery, 30),
+    ...searchFetches,
   ]);
 
-  // Merge + deduplicate + filter tracks with no preview or cover
+  // Flatten search results
+  const searchTracks = searchResults.flat();
+
+  // Merge + deduplicate + filter tracks with no preview or cover + exclude liked tracks
   const seen = new Set<number>();
   const all: DeezerTrack[] = [];
   for (const t of [...tracks0, ...tracks1, ...tracks2, ...searchTracks]) {
-    if (!seen.has(t.id) && t.preview && t.album?.cover_xl) {
+    if (!seen.has(t.id) && t.preview && t.album?.cover_xl && !excludeIds.has(String(t.id))) {
       seen.add(t.id);
       all.push(t);
     }
