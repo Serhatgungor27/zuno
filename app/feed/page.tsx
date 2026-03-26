@@ -788,6 +788,8 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   const [isMuted, setIsMuted] = useState(true);
   const [progress, setProgress] = useState(0);
   const [liked, setLiked] = useState(false);
+  const [reposted, setReposted] = useState(false);
+  const [repostLoading, setRepostLoading] = useState(false);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [showVideo, setShowVideo] = useState(false);
   const [isActive, setIsActive] = useState(false);
@@ -973,6 +975,28 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
     onLike?.(track, next);
   };
 
+  const handleDiscoverRepost = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (repostLoading) return;
+    setRepostLoading(true);
+    const next = !reposted;
+    setReposted(next);
+    try {
+      await fetch("/api/repost", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          historyId: track.trackId,
+          trackName: track.name,
+          artist: track.artist,
+          albumImage: track.albumImage,
+          trackUrl: track.spotifyUrl,
+        }),
+      });
+    } catch {}
+    setRepostLoading(false);
+  };
+
   const handleOpenSpotify = (e: React.MouseEvent) => {
     e.stopPropagation();
     logInteraction("open_spotify");
@@ -1097,6 +1121,15 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
               stroke={liked ? "none" : "currentColor"} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+            </svg>
+          </div>
+        </button>
+
+        {/* Repost */}
+        <button onClick={handleDiscoverRepost} className="flex flex-col items-center gap-1">
+          <div className={`w-11 h-11 rounded-full bg-black/40 backdrop-blur-sm border flex items-center justify-center transition-colors ${reposted ? "border-green-500/60" : "border-white/10"}`}>
+            <svg className={`w-5 h-5 ${reposted ? "text-green-400" : "text-white"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </div>
         </button>
