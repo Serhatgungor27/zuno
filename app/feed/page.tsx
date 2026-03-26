@@ -729,7 +729,7 @@ function TrendingRow({ track, rank }: { track: TrendingTrack; rank: number }) {
 }
 
 // ── Discover Card ─────────────────────────────────────────────────────────────
-function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { track: DiscoverTrack; sessionId: string; audioUnlocked: boolean; onUnlock: () => void; onLike?: (trackId: string, artist: string, liked: boolean) => void }) {
+function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { track: DiscoverTrack; sessionId: string; audioUnlocked: boolean; onUnlock: () => void; onLike?: (track: DiscoverTrack, liked: boolean) => void }) {
   const cardRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -922,7 +922,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
     const next = !liked;
     setLiked(next);
     logInteraction(next ? "like" : "unlike");
-    onLike?.(track.trackId, track.artist, next);
+    onLike?.(track, next);
   };
 
   const handleOpenSpotify = (e: React.MouseEvent) => {
@@ -1298,19 +1298,30 @@ export default function FeedPage() {
     fetchFeed();
   }, [fetchFeed]);
 
-  const handleDiscoverLike = useCallback((trackId: string, artist: string, liked: boolean) => {
+  const handleDiscoverLike = useCallback((track: DiscoverTrack, liked: boolean) => {
     setLikedDiscoverIds(prev => {
       const next = new Set(prev);
-      if (liked) next.add(trackId); else next.delete(trackId);
+      if (liked) next.add(track.trackId); else next.delete(track.trackId);
       try { localStorage.setItem("zuno_liked_discover", JSON.stringify([...next])); } catch {}
       return next;
     });
     setLikedDiscoverArtists(prev => {
       if (!liked) return prev;
-      const next = [artist, ...prev.filter(a => a !== artist)].slice(0, 10);
+      const next = [track.artist, ...prev.filter(a => a !== track.artist)].slice(0, 10);
       try { localStorage.setItem("zuno_liked_artists", JSON.stringify(next)); } catch {}
       return next;
     });
+    // Persist full track data for the liked page
+    try {
+      const stored: DiscoverTrack[] = JSON.parse(localStorage.getItem("zuno_liked_tracks") ?? "[]");
+      if (liked) {
+        if (!stored.find(t => t.trackId === track.trackId)) {
+          localStorage.setItem("zuno_liked_tracks", JSON.stringify([track, ...stored]));
+        }
+      } else {
+        localStorage.setItem("zuno_liked_tracks", JSON.stringify(stored.filter(t => t.trackId !== track.trackId)));
+      }
+    } catch {}
   }, []);
 
   const refreshDiscover = useCallback(() => {
@@ -1420,20 +1431,27 @@ export default function FeedPage() {
         {/* Right: refresh on discover, avatar elsewhere */}
         <div className="flex items-center justify-end gap-2">
           {tab === "discover" && (
-            <button
-              onClick={refreshDiscover}
-              disabled={discoverRefreshing || discoverLoading}
-              className="w-8 h-8 flex items-center justify-center text-white/60 hover:text-white transition-colors disabled:opacity-30"
-              title="Refresh"
-            >
-              <svg
-                className={`w-5 h-5 ${discoverRefreshing ? "animate-spin" : ""}`}
-                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            <>
+              <Link href="/liked" className="w-8 h-8 flex items-center justify-center text-white/60 hover:text-white transition-colors" title="Liked songs">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                </svg>
+              </Link>
+              <button
+                onClick={refreshDiscover}
+                disabled={discoverRefreshing || discoverLoading}
+                className="w-8 h-8 flex items-center justify-center text-white/60 hover:text-white transition-colors disabled:opacity-30"
+                title="Refresh"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-            </button>
+                <svg
+                  className={`w-5 h-5 ${discoverRefreshing ? "animate-spin" : ""}`}
+                  fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </button>
+            </>
           )}
           {isLoggedIn && myId ? (
             <Link href={`/u/${myId}`}>
