@@ -289,20 +289,21 @@ export default function ProfilePage() {
   // ── Profile page ──────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* ── Top bar ── */}
-      <div className="flex items-center justify-between px-4 pt-12 pb-4">
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-4 pt-12 pb-2">
         <button
           onClick={() => router.push("/feed")}
-          className="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 active:bg-white/15 transition-all"
+          className="w-9 h-9 flex items-center justify-center"
           aria-label="Go back"
         >
           <svg
-            width="18"
-            height="18"
+            width="22"
+            height="22"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
-            strokeWidth="2"
+            strokeWidth="2.5"
             strokeLinecap="round"
             strokeLinejoin="round"
           >
@@ -310,15 +311,15 @@ export default function ProfilePage() {
           </svg>
         </button>
 
-        {isOwnProfile && (
+        {isOwnProfile ? (
           <Link
             href={`/u/${profile.username}/settings`}
-            className="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 active:bg-white/15 transition-all"
+            className="w-9 h-9 flex items-center justify-center"
             aria-label="Settings"
           >
             <svg
-              width="18"
-              height="18"
+              width="22"
+              height="22"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -330,336 +331,383 @@ export default function ProfilePage() {
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
             </svg>
           </Link>
+        ) : (
+          <div className="w-9 h-9" />
         )}
-
-        {/* Spacer when not own profile so back button stays left-aligned */}
-        {!isOwnProfile && <div className="w-9 h-9" />}
       </div>
 
       {/* ── Avatar + identity ── */}
-      <div className="flex flex-col items-center px-6 pb-6">
+      <div className="flex flex-col items-center px-6 pt-4 pb-5">
         {/* Avatar */}
-        <div className="relative mb-4">
+        <div className="mb-3">
           {profile.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={profile.avatar_url}
               alt={displayName}
-              className="w-24 h-24 rounded-full object-cover border-2 border-white/10"
+              className="w-[88px] h-[88px] rounded-full object-cover"
             />
           ) : (
-            <div className="w-24 h-24 rounded-full bg-white/10 border-2 border-white/10 flex items-center justify-center text-3xl font-bold text-white/70">
+            <div className="w-[88px] h-[88px] rounded-full bg-white flex items-center justify-center text-3xl font-bold text-black">
               {avatarLetter}
             </div>
           )}
         </div>
 
-        {/* Name + username */}
-        <h1 className="text-xl font-bold text-white mb-1">{displayName}</h1>
-        <p className="text-sm text-white/40 mb-3">@{profile.username}</p>
+        {/* Display name */}
+        <h1 className="text-xl font-bold text-white mb-0.5">{displayName}</h1>
+        {/* @username */}
+        <p className="text-sm text-white/40 mb-4">@{profile.username}</p>
 
-        {/* Bio */}
-        {profile.bio && (
-          <p className="text-sm text-white/70 text-center max-w-xs leading-relaxed mb-4">
-            {profile.bio}
-          </p>
-        )}
+        {/* Stats row */}
+        <div className="flex items-center gap-0 mb-5 w-full max-w-xs justify-center">
+          {/* Following */}
+          <div className="flex-1 flex flex-col items-center">
+            <span className="text-lg font-bold text-white leading-tight">{stats.following}</span>
+            <span className="text-xs text-white/50 mt-0.5">Following</span>
+          </div>
+          {/* Divider */}
+          <div className="w-px h-8 bg-white/10" />
+          {/* Followers */}
+          <div className="flex-1 flex flex-col items-center">
+            <span className="text-lg font-bold text-white leading-tight">{stats.followers}</span>
+            <span className="text-xs text-white/50 mt-0.5">Followers</span>
+          </div>
+          {/* Divider */}
+          <div className="w-px h-8 bg-white/10" />
+          {/* Vibes */}
+          <div className="flex-1 flex flex-col items-center">
+            <span className="text-lg font-bold text-white leading-tight">{stats.posts}</span>
+            <span className="text-xs text-white/50 mt-0.5">Vibes</span>
+          </div>
+        </div>
 
-        {/* Follow / Edit profile button */}
+        {/* Action button */}
         {isOwnProfile ? (
           <Link
             href={`/u/${profile.username}/settings`}
-            className="px-6 py-2 rounded-full border border-white/20 text-sm font-medium text-white/80 hover:bg-white/5 active:bg-white/10 transition-all"
+            className="px-10 py-2 rounded-md border border-white/20 text-sm font-semibold text-white hover:bg-white/5 active:bg-white/10 transition-all"
           >
-            Edit profile
+            Edit Profile
           </Link>
         ) : (
           <button
             onClick={handleFollow}
             disabled={followLoading}
-            className={`px-6 py-2 rounded-full text-sm font-medium transition-all disabled:opacity-50 ${
+            className={`px-10 py-2 rounded-md text-sm font-semibold transition-all disabled:opacity-50 ${
               isFollowing
-                ? "border border-white/20 text-white/80 hover:bg-white/5 active:bg-white/10"
+                ? "border border-white/20 text-white bg-transparent hover:bg-white/5"
                 : "bg-white text-black hover:bg-white/90 active:bg-white/80"
             }`}
           >
             {followLoading ? "…" : isFollowing ? "Following" : "Follow"}
           </button>
         )}
+
+        {/* Bio */}
+        {profile.bio && (
+          <p className="text-sm text-white/70 text-center max-w-xs leading-relaxed mt-4">
+            {profile.bio}
+          </p>
+        )}
       </div>
 
-      {/* ── Stats row ── */}
-      <div className="flex border-t border-b border-white/8 divide-x divide-white/8 mb-6">
-        {[
-          { label: "Posts", value: stats.posts },
-          { label: "Followers", value: stats.followers },
-          { label: "Following", value: stats.following },
-        ].map(({ label, value }) => (
-          <div key={label} className="flex-1 py-4 flex flex-col items-center gap-0.5">
-            <span className="text-lg font-bold text-white">{value}</span>
-            <span className="text-xs text-white/40">{label}</span>
-          </div>
-        ))}
-      </div>
+      {/* ── Tab bar ── */}
+      <div className="flex border-b border-white/10">
+        {/* Vibes tab */}
+        <button
+          onClick={() => setTab("vibes")}
+          className={`flex-1 flex flex-col items-center py-3 gap-1 relative transition-colors ${
+            tab === "vibes" ? "text-white" : "text-white/40"
+          }`}
+        >
+          {/* Grid icon */}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+          </svg>
+          <span className="text-[10px] font-medium">Vibes</span>
+          {tab === "vibes" && (
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-white rounded-full" />
+          )}
+        </button>
 
-      {/* ── Tab switcher ── */}
-      <div className="px-4 mb-6">
-        <div className="flex bg-white/5 rounded-xl p-1 border border-white/10">
-          {(["vibes", "reposts", "taste"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`flex-1 py-2 text-sm font-medium rounded-lg capitalize transition-all duration-200 ${
-                tab === t
-                  ? "bg-white text-black shadow-sm"
-                  : "text-white/50 hover:text-white/80"
-              }`}
-            >
-              {t === "vibes" ? "Vibes" : t === "reposts" ? "Reposts" : "Taste"}
-            </button>
-          ))}
-        </div>
+        {/* Reposts tab */}
+        <button
+          onClick={() => setTab("reposts")}
+          className={`flex-1 flex flex-col items-center py-3 gap-1 relative transition-colors ${
+            tab === "reposts" ? "text-white" : "text-white/40"
+          }`}
+        >
+          {/* Repost icon */}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="17 1 21 5 17 9" />
+            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+            <polyline points="7 23 3 19 7 15" />
+            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+          </svg>
+          <span className="text-[10px] font-medium">Reposts</span>
+          {tab === "reposts" && (
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-white rounded-full" />
+          )}
+        </button>
+
+        {/* Taste tab */}
+        <button
+          onClick={() => setTab("taste")}
+          className={`flex-1 flex flex-col items-center py-3 gap-1 relative transition-colors ${
+            tab === "taste" ? "text-white" : "text-white/40"
+          }`}
+        >
+          {/* Heart icon */}
+          <svg width="20" height="20" viewBox="0 0 24 24" fill={tab === "taste" ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+          </svg>
+          <span className="text-[10px] font-medium">Taste</span>
+          {tab === "taste" && (
+            <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-white rounded-full" />
+          )}
+        </button>
       </div>
 
       {/* ── Tab content ── */}
-      <div className="px-4 pb-24">
 
-        {/* ── Vibes tab ── */}
-        {tab === "vibes" && (
-          vibesLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+      {/* ── Vibes tab ── */}
+      {tab === "vibes" && (
+        vibesLoading ? (
+          <div className="grid grid-cols-3">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div
+                key={i}
+                className="aspect-square bg-white/5 animate-pulse"
+                style={{ animationDelay: `${i * 60}ms` }}
+              />
+            ))}
+          </div>
+        ) : vibeItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center px-6">
+            <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/30">
+                <path d="M9 18V5l12-2v13" />
+                <circle cx="6" cy="18" r="3" />
+                <circle cx="18" cy="16" r="3" />
+              </svg>
             </div>
-          ) : vibeItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/30">
-                  <path d="M9 18V5l12-2v13" />
-                  <circle cx="6" cy="18" r="3" />
-                  <circle cx="18" cy="16" r="3" />
-                </svg>
-              </div>
-              <p className="text-white/50 text-sm font-medium mb-1">No vibes yet</p>
-              <p className="text-white/25 text-xs max-w-xs">
-                {isOwnProfile
-                  ? "Your listening history will appear here."
-                  : `${displayName} hasn't listened to anything yet.`}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {vibeItems.map((item) => {
-                const likeState = vibeLikes[item.id] ?? { count: item.like_count ?? 0, liked: false };
-                return (
-                  <div key={item.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl p-3">
-                    {item.album_image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.album_image} alt={item.track_name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-white/10 flex-shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-semibold truncate">{item.track_name}</p>
-                      <p className="text-white/40 text-xs truncate">{item.artist}</p>
-                      <p className="text-white/20 text-[10px] mt-0.5">{timeAgo(item.played_at)}</p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {currentUserId && (
-                        <button
-                          onClick={(e) => handleVibeLike(e, item.id)}
-                          className="flex flex-col items-center gap-0.5"
-                        >
-                          <svg
-                            className={`w-4 h-4 transition-colors ${likeState.liked ? "text-red-400 fill-red-400" : "text-white/30 fill-none"}`}
-                            stroke={likeState.liked ? "none" : "currentColor"}
-                            viewBox="0 0 24 24"
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                          </svg>
-                          {likeState.count > 0 && (
-                            <span className="text-[10px] text-white/30 font-semibold">{likeState.count}</span>
-                          )}
-                        </button>
-                      )}
-                      <a
-                        href={item.track_url ?? `https://open.spotify.com/search/${encodeURIComponent(item.track_name)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-white/20 hover:text-white/50 transition-colors"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </a>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )
-        )}
-
-        {/* ── Reposts tab ── */}
-        {tab === "reposts" && (
-          repostsLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
-            </div>
-          ) : reposts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/30">
-                  <polyline points="17 1 21 5 17 9" />
-                  <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                  <polyline points="7 23 3 19 7 15" />
-                  <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                </svg>
-              </div>
-              <p className="text-white/50 text-sm font-medium mb-1">No reposts yet</p>
-              <p className="text-white/25 text-xs max-w-xs">
-                Songs {isOwnProfile ? "you repost" : `${displayName} reposts`} will show up here.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {reposts.map((item) => (
-                <div key={item.id} className="flex items-center gap-3 bg-white/5 border border-white/8 rounded-xl p-3">
-                  {/* Repost indicator */}
-                  <div className="flex-shrink-0 w-4 flex items-center justify-center">
-                    <svg className="w-3.5 h-3.5 text-white/30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                        d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            <p className="text-white/50 text-sm font-medium mb-1">No vibes yet</p>
+            <p className="text-white/25 text-xs max-w-xs">
+              {isOwnProfile
+                ? "Your listening history will appear here."
+                : `${displayName} hasn't listened to anything yet.`}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3">
+            {vibeItems.map((item) => (
+              <a
+                key={item.id}
+                href={item.track_url ?? `https://open.spotify.com/search/${encodeURIComponent(item.track_name)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative aspect-square overflow-hidden block"
+              >
+                {item.album_image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.album_image}
+                    alt={item.track_name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-white/10 flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/20">
+                      <path d="M9 18V5l12-2v13" />
+                      <circle cx="6" cy="18" r="3" />
+                      <circle cx="18" cy="16" r="3" />
                     </svg>
                   </div>
-                  {item.album_image ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={item.album_image} alt={item.track_name} className="w-10 h-10 rounded-lg object-cover flex-shrink-0" />
-                  ) : (
-                    <div className="w-10 h-10 rounded-lg bg-white/10 flex-shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white text-sm font-semibold truncate">{item.track_name}</p>
-                    <p className="text-white/40 text-xs truncate">{item.artist}</p>
-                    <p className="text-white/20 text-[10px] mt-0.5">{timeAgo(item.created_at)}</p>
-                  </div>
-                  <a
-                    href={item.track_url ?? `https://open.spotify.com/search/${encodeURIComponent(item.track_name)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="text-white/20 hover:text-white/50 transition-colors flex-shrink-0"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </a>
+                )}
+                {/* Dark gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                {/* Track name overlay */}
+                <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center gap-1">
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="white" className="flex-shrink-0 opacity-70">
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" fill="white" />
+                    <circle cx="18" cy="16" r="3" fill="white" />
+                  </svg>
+                  <span className="text-[10px] text-white truncate leading-tight opacity-90">
+                    {item.track_name}
+                  </span>
                 </div>
-              ))}
-            </div>
-          )
-        )}
+              </a>
+            ))}
+          </div>
+        )
+      )}
 
-        {/* ── Taste tab ── */}
-        {tab === "taste" && (
-          tasteLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+      {/* ── Reposts tab ── */}
+      {tab === "reposts" && (
+        repostsLoading ? (
+          <div className="grid grid-cols-3">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <div
+                key={i}
+                className="aspect-square bg-white/5 animate-pulse"
+                style={{ animationDelay: `${i * 60}ms` }}
+              />
+            ))}
+          </div>
+        ) : reposts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center px-6">
+            <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/30">
+                <polyline points="17 1 21 5 17 9" />
+                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                <polyline points="7 23 3 19 7 15" />
+                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+              </svg>
             </div>
-          ) : !taste || (taste.favorite_artists.length === 0 && taste.music_genres.length === 0 && taste.podcast_genres.length === 0) ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mb-4">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                  strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/30">
-                  <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" />
-                  <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                  <line x1="9" y1="9" x2="9.01" y2="9" />
-                  <line x1="15" y1="9" x2="15.01" y2="9" />
-                </svg>
+            <p className="text-white/50 text-sm font-medium mb-1">No reposts yet</p>
+            <p className="text-white/25 text-xs max-w-xs">
+              Songs {isOwnProfile ? "you repost" : `${displayName} reposts`} will show up here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3">
+            {reposts.map((item) => (
+              <a
+                key={item.id}
+                href={item.track_url ?? `https://open.spotify.com/search/${encodeURIComponent(item.track_name)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative aspect-square overflow-hidden block"
+              >
+                {item.album_image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.album_image}
+                    alt={item.track_name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-white/10 flex items-center justify-center">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-white/20">
+                      <polyline points="17 1 21 5 17 9" />
+                      <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                      <polyline points="7 23 3 19 7 15" />
+                      <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                    </svg>
+                  </div>
+                )}
+                {/* Dark gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                {/* Track name overlay */}
+                <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center gap-1">
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="white" className="flex-shrink-0 opacity-70">
+                    <path d="M9 18V5l12-2v13" />
+                    <circle cx="6" cy="18" r="3" fill="white" />
+                    <circle cx="18" cy="16" r="3" fill="white" />
+                  </svg>
+                  <span className="text-[10px] text-white truncate leading-tight opacity-90">
+                    {item.track_name}
+                  </span>
+                </div>
+              </a>
+            ))}
+          </div>
+        )
+      )}
+
+      {/* ── Taste tab ── */}
+      {tab === "taste" && (
+        tasteLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
+          </div>
+        ) : !taste || (taste.favorite_artists.length === 0 && taste.music_genres.length === 0 && taste.podcast_genres.length === 0) ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center px-6">
+            {isOwnProfile ? (
+              <Link
+                href={`/u/${profile.username}/settings`}
+                className="text-sm text-white/60 hover:text-white transition-colors"
+              >
+                Set your taste in Settings →
+              </Link>
+            ) : (
+              <p className="text-white/40 text-sm">No taste set yet</p>
+            )}
+          </div>
+        ) : (
+          <div className="px-4 py-6 space-y-7 pb-24">
+            {taste.favorite_artists.length > 0 && (
+              <div>
+                <p className="text-xs text-white/40 font-semibold uppercase tracking-widest mb-3">
+                  Artists
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {taste.favorite_artists.map((artist) => (
+                    <span
+                      key={artist}
+                      className="px-3.5 py-1.5 rounded-full text-sm border border-white/20 text-white/80"
+                    >
+                      {artist}
+                    </span>
+                  ))}
+                </div>
               </div>
-              <p className="text-white/50 text-sm font-medium mb-1">No taste profile yet</p>
-              <p className="text-white/25 text-xs max-w-xs mb-4">
-                {isOwnProfile
-                  ? "Add your favourite artists and genres in settings."
-                  : `${displayName} hasn't set up their taste profile yet.`}
-              </p>
-              {isOwnProfile && (
-                <Link
-                  href={`/u/${profile.username}/settings`}
-                  className="text-sm text-white/50 underline underline-offset-4 hover:text-white transition-colors"
-                >
-                  Go to Settings
-                </Link>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {taste.favorite_artists.length > 0 && (
-                <div>
-                  <p className="text-xs text-white/40 font-semibold uppercase tracking-widest mb-3">
-                    Favourite Artists
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {taste.favorite_artists.map((artist) => (
-                      <span
-                        key={artist}
-                        className="px-3.5 py-1.5 rounded-full text-sm bg-white/10 border border-white/15 text-white/80"
-                      >
-                        {artist}
-                      </span>
-                    ))}
-                  </div>
+            )}
+            {taste.music_genres.length > 0 && (
+              <div>
+                <p className="text-xs text-white/40 font-semibold uppercase tracking-widest mb-3">
+                  Music
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {taste.music_genres.map((genre) => (
+                    <span
+                      key={genre}
+                      className="px-3.5 py-1.5 rounded-full text-sm border border-white/20 text-white/80"
+                    >
+                      {genre}
+                    </span>
+                  ))}
                 </div>
-              )}
-              {taste.music_genres.length > 0 && (
-                <div>
-                  <p className="text-xs text-white/40 font-semibold uppercase tracking-widest mb-3">
-                    Music Genres
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {taste.music_genres.map((genre) => (
-                      <span
-                        key={genre}
-                        className="px-3.5 py-1.5 rounded-full text-sm bg-white text-black font-medium"
-                      >
-                        {genre}
-                      </span>
-                    ))}
-                  </div>
+              </div>
+            )}
+            {taste.podcast_genres.length > 0 && (
+              <div>
+                <p className="text-xs text-white/40 font-semibold uppercase tracking-widest mb-3">
+                  Podcasts
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {taste.podcast_genres.map((genre) => (
+                    <span
+                      key={genre}
+                      className="px-3.5 py-1.5 rounded-full text-sm border border-white/20 text-white/80"
+                    >
+                      {genre}
+                    </span>
+                  ))}
                 </div>
-              )}
-              {taste.podcast_genres.length > 0 && (
-                <div>
-                  <p className="text-xs text-white/40 font-semibold uppercase tracking-widest mb-3">
-                    Podcast Genres
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {taste.podcast_genres.map((genre) => (
-                      <span
-                        key={genre}
-                        className="px-3.5 py-1.5 rounded-full text-sm bg-white/10 border border-white/15 text-white/80"
-                      >
-                        {genre}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {isOwnProfile && (
-                <Link
-                  href={`/u/${profile.username}/settings`}
-                  className="block text-center text-sm text-white/30 underline underline-offset-4 hover:text-white/60 transition-colors"
-                >
-                  Edit in Settings
-                </Link>
-              )}
-            </div>
-          )
-        )}
-      </div>
+              </div>
+            )}
+            {isOwnProfile && (
+              <Link
+                href={`/u/${profile.username}/settings`}
+                className="block text-center text-sm text-white/30 hover:text-white/60 transition-colors"
+              >
+                Edit in Settings →
+              </Link>
+            )}
+          </div>
+        )
+      )}
+
     </div>
   );
 }
