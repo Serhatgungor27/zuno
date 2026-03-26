@@ -426,6 +426,8 @@ function VibeCard({ item, onActivate, isPlaying, onTogglePlay, isLoggedIn, resto
   const [isFollowing, setIsFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [reposted, setReposted] = useState(false);
+  const [repostLoading, setRepostLoading] = useState(false);
   const isSelf = myId === item.id;
   const onActivateRef = useRef(onActivate);
   onActivateRef.current = onActivate;
@@ -512,6 +514,36 @@ function VibeCard({ item, onActivate, isPlaying, onTogglePlay, isLoggedIn, resto
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ historyId: item.vibeId }),
     }).catch(() => {});
+  };
+
+  const handleRepost = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isLoggedIn) {
+      setShowLoginPrompt(true);
+      setTimeout(() => setShowLoginPrompt(false), 3000);
+      return;
+    }
+    if (repostLoading) return;
+    setRepostLoading(true);
+    const next = !reposted;
+    setReposted(next);
+    try {
+      await fetch("/api/repost", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          historyId: item.vibeId,
+          trackName: item.track,
+          artist: item.artist,
+          albumImage: item.albumImage,
+          trackUrl: item.trackUrl,
+        }),
+      });
+    } catch {
+      setReposted(!next);
+    } finally {
+      setRepostLoading(false);
+    }
   };
 
   return (
@@ -638,6 +670,22 @@ function VibeCard({ item, onActivate, isPlaying, onTogglePlay, isLoggedIn, resto
             </div>
             <span className="text-white/70 text-[11px] font-semibold">{commentCount > 0 ? commentCount : ""}</span>
           </button>
+
+          {/* Repost */}
+          {isLoggedIn && (
+            <button onClick={handleRepost} className="flex flex-col items-center gap-1">
+              <div className={`w-11 h-11 rounded-full bg-black/30 backdrop-blur-sm border flex items-center justify-center transition-colors ${
+                reposted ? "border-green-500/50" : "border-white/10"
+              }`}>
+                <svg className={`w-5 h-5 ${reposted ? "text-green-400" : "text-white"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              </div>
+              <span className="text-white/50 text-[11px] font-semibold">
+                {reposted ? "Reposted" : "Repost"}
+              </span>
+            </button>
+          )}
 
           {/* Share */}
           <button onClick={(e) => { e.stopPropagation(); setShowShare(true); }}
@@ -1098,6 +1146,9 @@ export default function FeedPage() {
   const [likedDiscoverArtists, setLikedDiscoverArtists] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem("zuno_liked_artists") ?? "[]"); } catch { return []; }
   });
+  const [tasteGenres, setTasteGenres] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("zuno_taste_genres") ?? "[]"); } catch { return []; }
+  });
   const discoverSentinelRef = useRef<HTMLDivElement>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const audioUnlockedRef = useRef(false);
@@ -1232,6 +1283,13 @@ export default function FeedPage() {
             setUnreadCount((nd.notifications ?? []).filter((n: { read: boolean }) => !n.read).length);
           }
         }).catch(() => {});
+        // Load taste genres for discover personalization
+        fetch("/api/taste").then((r) => r.json()).then((td) => {
+          if (td.ok && td.music_genres?.length) {
+            setTasteGenres(td.music_genres);
+            try { localStorage.setItem("zuno_taste_genres", JSON.stringify(td.music_genres)); } catch { /* ignore */ }
+          }
+        }).catch(() => {});
       }
     }).catch(() => {});
   }, []);
@@ -1331,12 +1389,13 @@ export default function FeedPage() {
     setDiscoverPage(1);
     const excludeIds = [...likedDiscoverIds].join(",");
     const artistsParam = likedDiscoverArtists.slice(0, 3).join(",");
-    fetch(`/api/discover?sessionId=${sessionId}&page=0${excludeIds ? `&excludeIds=${encodeURIComponent(excludeIds)}` : ""}${artistsParam ? `&artists=${encodeURIComponent(artistsParam)}` : ""}`)
+    const genresParam = tasteGenres.slice(0, 5).join(",");
+    fetch(`/api/discover?sessionId=${sessionId}&page=0${excludeIds ? `&excludeIds=${encodeURIComponent(excludeIds)}` : ""}${artistsParam ? `&artists=${encodeURIComponent(artistsParam)}` : ""}${genresParam ? `&genres=${encodeURIComponent(genresParam)}` : ""}`)
       .then(r => r.json())
       .then(d => { if (d.ok) setDiscoverTracks(d.tracks ?? []); })
       .catch(() => {})
       .finally(() => setDiscoverRefreshing(false));
-  }, [sessionId, discoverRefreshing, discoverLoading, likedDiscoverIds, likedDiscoverArtists]);
+  }, [sessionId, discoverRefreshing, discoverLoading, likedDiscoverIds, likedDiscoverArtists, tasteGenres]);
 
   // Load discover tracks when tab is opened
   useEffect(() => {
@@ -1345,12 +1404,13 @@ export default function FeedPage() {
     setDiscoverLoading(true);
     const excludeIds = [...likedDiscoverIds].join(",");
     const artistsParam = likedDiscoverArtists.slice(0, 3).join(",");
-    fetch(`/api/discover?sessionId=${sessionId}${excludeIds ? `&excludeIds=${encodeURIComponent(excludeIds)}` : ""}${artistsParam ? `&artists=${encodeURIComponent(artistsParam)}` : ""}`)
+    const genresParam = tasteGenres.slice(0, 5).join(",");
+    fetch(`/api/discover?sessionId=${sessionId}${excludeIds ? `&excludeIds=${encodeURIComponent(excludeIds)}` : ""}${artistsParam ? `&artists=${encodeURIComponent(artistsParam)}` : ""}${genresParam ? `&genres=${encodeURIComponent(genresParam)}` : ""}`)
       .then((r) => r.json())
       .then((d) => { if (d.ok) setDiscoverTracks(d.tracks ?? []); })
       .catch(() => {})
       .finally(() => setDiscoverLoading(false));
-  }, [tab, sessionId, discoverTracks.length, likedDiscoverIds, likedDiscoverArtists]);
+  }, [tab, sessionId, discoverTracks.length, likedDiscoverIds, likedDiscoverArtists, tasteGenres]);
 
   // Load more discover tracks when sentinel enters view — increments page for fresh genres
   const loadMoreDiscover = useCallback(() => {
@@ -1359,7 +1419,8 @@ export default function FeedPage() {
     const nextPage = discoverPage;
     const excludeIds = [...likedDiscoverIds].join(",");
     const artistsParam = likedDiscoverArtists.slice(0, 3).join(",");
-    fetch(`/api/discover?sessionId=${sessionId}&page=${nextPage}${excludeIds ? `&excludeIds=${encodeURIComponent(excludeIds)}` : ""}${artistsParam ? `&artists=${encodeURIComponent(artistsParam)}` : ""}`)
+    const genresParam = tasteGenres.slice(0, 5).join(",");
+    fetch(`/api/discover?sessionId=${sessionId}&page=${nextPage}${excludeIds ? `&excludeIds=${encodeURIComponent(excludeIds)}` : ""}${artistsParam ? `&artists=${encodeURIComponent(artistsParam)}` : ""}${genresParam ? `&genres=${encodeURIComponent(genresParam)}` : ""}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.ok && d.tracks?.length) {
@@ -1373,7 +1434,7 @@ export default function FeedPage() {
       })
       .catch(() => {})
       .finally(() => setDiscoverLoadingMore(false));
-  }, [sessionId, discoverLoadingMore, discoverPage, likedDiscoverIds, likedDiscoverArtists]);
+  }, [sessionId, discoverLoadingMore, discoverPage, likedDiscoverIds, likedDiscoverArtists, tasteGenres]);
 
   // Sentinel observer — triggers when user is 3 cards from the end
   useEffect(() => {

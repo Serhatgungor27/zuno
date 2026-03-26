@@ -5,6 +5,18 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/app/lib/supabase/client";
 
+const MUSIC_GENRES = [
+  "Hip-Hop", "R&B", "Pop", "Rock", "Electronic", "Jazz", "Classical",
+  "Afrobeats", "Latin", "Metal", "Indie", "Soul", "Reggae", "Country",
+  "Dance", "K-Pop",
+];
+
+const PODCAST_GENRES = [
+  "True Crime", "Comedy", "Tech", "Business", "Health", "Sports", "News",
+  "Science", "History", "Culture", "Politics", "Education", "Self-Help",
+  "Finance", "Entertainment",
+];
+
 type Profile = {
   id: string;
   username: string;
@@ -249,6 +261,15 @@ export default function SettingsPage() {
   const [passwordEmailLoading, setPasswordEmailLoading] = useState(false);
   const [signOutLoading, setSignOutLoading] = useState(false);
 
+  // Taste profile state
+  const [favoriteArtists, setFavoriteArtists] = useState<string[]>([]);
+  const [musicGenres, setMusicGenres] = useState<string[]>([]);
+  const [podcastGenres, setPodcastGenres] = useState<string[]>([]);
+  const [artistInput, setArtistInput] = useState("");
+  const [tasteSaving, setTasteSaving] = useState(false);
+  const [tasteSaved, setTasteSaved] = useState(false);
+  const [tasteError, setTasteError] = useState<string | null>(null);
+
   useEffect(() => {
     async function load() {
       const supabase = createClient();
@@ -285,6 +306,20 @@ export default function SettingsPage() {
       }
 
       setProfile(data);
+
+      // Load taste profile
+      try {
+        const tasteRes = await fetch("/api/taste");
+        if (tasteRes.ok) {
+          const tasteData = await tasteRes.json();
+          if (tasteData.ok) {
+            setFavoriteArtists(tasteData.favorite_artists ?? []);
+            setMusicGenres(tasteData.music_genres ?? []);
+            setPodcastGenres(tasteData.podcast_genres ?? []);
+          }
+        }
+      } catch { /* silent */ }
+
       setLoading(false);
     }
 
@@ -415,6 +450,70 @@ export default function SettingsPage() {
     router.replace("/feed");
   }
 
+  // ── Taste helpers ──────────────────────────────────────────────────────────
+
+  function handleArtistInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addArtistTag();
+    }
+  }
+
+  function addArtistTag() {
+    const trimmed = artistInput.trim().replace(/,$/, "");
+    if (!trimmed) return;
+    if (favoriteArtists.length >= 10) return;
+    if (favoriteArtists.includes(trimmed)) { setArtistInput(""); return; }
+    setFavoriteArtists((prev) => [...prev, trimmed]);
+    setArtistInput("");
+  }
+
+  function removeArtistTag(artist: string) {
+    setFavoriteArtists((prev) => prev.filter((a) => a !== artist));
+  }
+
+  function toggleMusicGenre(genre: string) {
+    setMusicGenres((prev) =>
+      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
+    );
+  }
+
+  function togglePodcastGenre(genre: string) {
+    setPodcastGenres((prev) =>
+      prev.includes(genre) ? prev.filter((g) => g !== genre) : [...prev, genre]
+    );
+  }
+
+  async function saveTaste() {
+    setTasteSaving(true);
+    setTasteError(null);
+    setTasteSaved(false);
+    try {
+      const res = await fetch("/api/taste", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          favorite_artists: favoriteArtists,
+          music_genres: musicGenres,
+          podcast_genres: podcastGenres,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setTasteSaved(true);
+        setTimeout(() => setTasteSaved(false), 3000);
+        // Persist genres to localStorage for discover
+        try { localStorage.setItem("zuno_taste_genres", JSON.stringify(musicGenres)); } catch { /* ignore */ }
+      } else {
+        setTasteError("Failed to save. Please try again.");
+      }
+    } catch {
+      setTasteError("Network error. Please try again.");
+    } finally {
+      setTasteSaving(false);
+    }
+  }
+
   // ── Sign out ───────────────────────────────────────────────────────────────
 
   async function handleSignOut() {
@@ -520,6 +619,120 @@ export default function SettingsPage() {
                 maxLength={30}
                 hint="Letters, numbers, and underscores only. Changing your username will update your profile URL."
               />
+            </div>
+          </section>
+
+          {/* ── Divider ── */}
+          <div className="h-px bg-white/8" />
+
+          {/* ── Music Taste section ── */}
+          <section>
+            <h2 className="text-xs text-white/40 font-semibold uppercase tracking-widest mb-4">
+              Music Taste
+            </h2>
+            <div className="space-y-6">
+              {/* Favourite Artists */}
+              <div>
+                <label className="block text-xs text-white/40 mb-2 font-medium uppercase tracking-wider">
+                  Favourite Artists
+                  <span className="ml-1 text-white/20 normal-case tracking-normal">
+                    ({favoriteArtists.length}/10)
+                  </span>
+                </label>
+                {/* Tags */}
+                {favoriteArtists.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {favoriteArtists.map((artist) => (
+                      <span
+                        key={artist}
+                        className="flex items-center gap-1.5 bg-white/10 border border-white/15 rounded-full px-3 py-1 text-sm text-white/80"
+                      >
+                        {artist}
+                        <button
+                          onClick={() => removeArtistTag(artist)}
+                          className="text-white/40 hover:text-white/80 transition-colors leading-none"
+                          aria-label={`Remove ${artist}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <input
+                  type="text"
+                  value={artistInput}
+                  onChange={(e) => setArtistInput(e.target.value)}
+                  onKeyDown={handleArtistInputKeyDown}
+                  onBlur={addArtistTag}
+                  placeholder={favoriteArtists.length >= 10 ? "Max 10 artists" : "Type an artist name and press Enter…"}
+                  disabled={favoriteArtists.length >= 10}
+                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-white/30 transition-all disabled:opacity-40"
+                />
+              </div>
+
+              {/* Music Genres */}
+              <div>
+                <label className="block text-xs text-white/40 mb-3 font-medium uppercase tracking-wider">
+                  Music Genres
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {MUSIC_GENRES.map((genre) => {
+                    const selected = musicGenres.includes(genre);
+                    return (
+                      <button
+                        key={genre}
+                        onClick={() => toggleMusicGenre(genre)}
+                        className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                          selected
+                            ? "bg-white text-black border-white"
+                            : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white/80"
+                        }`}
+                      >
+                        {genre}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Podcast Genres */}
+              <div>
+                <label className="block text-xs text-white/40 mb-3 font-medium uppercase tracking-wider">
+                  Podcast Genres
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {PODCAST_GENRES.map((genre) => {
+                    const selected = podcastGenres.includes(genre);
+                    return (
+                      <button
+                        key={genre}
+                        onClick={() => togglePodcastGenre(genre)}
+                        className={`px-3.5 py-1.5 rounded-full text-sm font-medium border transition-all ${
+                          selected
+                            ? "bg-white text-black border-white"
+                            : "bg-white/5 text-white/60 border-white/10 hover:bg-white/10 hover:text-white/80"
+                        }`}
+                      >
+                        {genre}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Save button */}
+              {tasteError && <p className="text-xs text-red-400">{tasteError}</p>}
+              {tasteSaved && (
+                <p className="text-xs text-green-400">Taste saved!</p>
+              )}
+              <button
+                onClick={saveTaste}
+                disabled={tasteSaving}
+                className="w-full py-3 rounded-xl bg-white text-black text-sm font-semibold disabled:opacity-50 hover:bg-white/90 active:bg-white/80 transition-all"
+              >
+                {tasteSaving ? "Saving…" : "Save Taste"}
+              </button>
             </div>
           </section>
 

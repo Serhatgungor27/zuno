@@ -36,6 +36,13 @@ function formatTrack(t: DeezerTrack) {
   };
 }
 
+const GENRE_MAP: Record<string, number> = {
+  "Pop": 132, "Hip-Hop": 116, "Rock": 152, "Electronic": 106,
+  "R&B": 165, "Jazz": 129, "Metal": 464, "Classical": 98,
+  "Indie": 85, "Soul": 67, "Reggae": 144, "Country": 84,
+  "Dance": 113, "K-Pop": 309, "Latin": 197, "Afrobeats": 386,
+};
+
 // Genre groups — each page uses a different group so infinite scroll gets fresh tracks
 const GENRE_GROUPS = [
   [0, 132, 116],   // page 0: Global, Pop, Rap
@@ -88,6 +95,7 @@ export async function GET(req: Request) {
   const page = Math.min(parseInt(searchParams.get("page") ?? "0", 10), GENRE_GROUPS.length - 1);
   const excludeIdsParam = searchParams.get("excludeIds") ?? "";
   const artistsParam = searchParams.get("artists") ?? "";
+  const genresParam = searchParams.get("genres") ?? "";
 
   // Parse excluded track IDs (already-liked tracks — never show again)
   const excludeIds = new Set(excludeIdsParam ? excludeIdsParam.split(",").filter(Boolean) : []);
@@ -95,7 +103,25 @@ export async function GET(req: Request) {
   // Parse liked artists from client (top 3)
   const clientArtists = artistsParam ? artistsParam.split(",").filter(Boolean).slice(0, 3) : [];
 
-  const genreGroup = GENRE_GROUPS[page];
+  // Parse taste genres from client — use up to 3 to replace/augment genre group
+  const tasteGenreNames = genresParam ? genresParam.split(",").filter(Boolean) : [];
+  const tasteGenreIds = tasteGenreNames
+    .map((g) => GENRE_MAP[g])
+    .filter((id): id is number => id !== undefined);
+
+  // Build genre group: prefer taste genres if provided, fall back to default rotation
+  let genreGroup: number[];
+  if (tasteGenreIds.length >= 3) {
+    // Shuffle taste genres and pick 3 for this page
+    const shuffled = [...tasteGenreIds].sort(() => Math.random() - 0.5);
+    genreGroup = shuffled.slice(0, 3);
+  } else if (tasteGenreIds.length > 0) {
+    // Mix taste genres with default group
+    const defaultGroup = GENRE_GROUPS[page];
+    genreGroup = [...tasteGenreIds, ...defaultGroup].slice(0, 3);
+  } else {
+    genreGroup = GENRE_GROUPS[page];
+  }
 
   // Build personalized search queries:
   // 1. Use liked artists from client if available
