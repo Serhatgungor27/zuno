@@ -785,7 +785,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPlayingRef = useRef(false); // mirror of isPlaying for use inside callbacks
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(!audioUnlocked);
   const [progress, setProgress] = useState(0);
   const [liked, setLiked] = useState(false);
   const [reposted, setReposted] = useState(false);
@@ -862,7 +862,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   useEffect(() => {
     if (!track.previewUrl) return;
     const audio = new Audio(track.previewUrl);
-    audio.muted = true; // start muted — unmuted on first user tap
+    audio.muted = !audioUnlocked; // start unmuted if user already unlocked audio
     audio.addEventListener("timeupdate", () => {
       setProgress((audio.currentTime / audio.duration) * 100);
     });
