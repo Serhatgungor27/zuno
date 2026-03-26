@@ -785,7 +785,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isPlayingRef = useRef(false); // mirror of isPlaying for use inside callbacks
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(!audioUnlocked);
+  const [isMuted, setIsMuted] = useState(true);
   const [progress, setProgress] = useState(0);
   const [liked, setLiked] = useState(false);
   const [reposted, setReposted] = useState(false);
@@ -814,12 +814,20 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
         if (visible) {
           enterTimeRef.current = Date.now();
           logInteraction("view");
-          // Auto-play preview muted (browsers allow muted autoplay)
+          // Auto-play preview — always start muted (browser requires it),
+          // then immediately unmute if the user has already unlocked audio.
           if (track.previewUrl && audioRef.current) {
-            audioRef.current.muted = !audioUnlocked;
-            setIsMuted(!audioUnlocked);
+            audioRef.current.muted = true;
+            setIsMuted(true);
             audioRef.current.play()
-              .then(() => setIsPlaying(true))
+              .then(() => {
+                setIsPlaying(true);
+                // Unmute right after play() resolves if audio already unlocked
+                if (audioUnlocked && audioRef.current) {
+                  audioRef.current.muted = false;
+                  setIsMuted(false);
+                }
+              })
               .catch(() => setIsPlaying(false));
           }
           // Lazy-load YouTube video only when this card is active
@@ -862,7 +870,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   useEffect(() => {
     if (!track.previewUrl) return;
     const audio = new Audio(track.previewUrl);
-    audio.muted = !audioUnlocked; // start unmuted if user already unlocked audio
+    audio.muted = true; // always start muted — browser blocks unmuted autoplay
     audio.addEventListener("timeupdate", () => {
       setProgress((audio.currentTime / audio.duration) * 100);
     });
