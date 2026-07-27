@@ -120,7 +120,10 @@ export default function AuthPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/api/auth/supabase/callback?next=/feed`,
+        // No query string here — Supabase glob-matches the full URL against the
+        // Redirect URLs allowlist, so `?next=...` would cause a match failure.
+        // The callback route already defaults to /feed.
+        redirectTo: `${window.location.origin}/api/auth/supabase/callback`,
       },
     });
 
