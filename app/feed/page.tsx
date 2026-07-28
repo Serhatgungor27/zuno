@@ -1069,8 +1069,9 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
         />
       )}
 
-      {/* Blurred album art background (fallback when no video) */}
-      {(!videoId || !showVideo) && track.albumImage && (
+      {/* Also covers the iframe while paused: YouTube draws its own centre play button
+          over a paused embed and controls=0 doesn't suppress it. */}
+      {(!videoId || !showVideo || !isPlaying) && track.albumImage && (
         <div
           className="absolute inset-0 bg-cover bg-center scale-110"
           style={{ backgroundImage: `url(${track.albumImage})`, filter: "blur(40px) brightness(0.3)" }}
@@ -1080,8 +1081,8 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
       {/* Gradient — tall fade at bottom + top overlay to hide YouTube title bar */}
       <div className="absolute inset-0 z-10" style={{ backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 18%), linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.5) 30%, transparent 60%)" }} />
 
-      {/* Album art — only shown when no video (centered) */}
-      {(!videoId || !showVideo) && track.albumImage && (
+      {/* Album art — centered, shown when no video or while paused */}
+      {(!videoId || !showVideo || !isPlaying) && track.albumImage && (
         <div
           className="absolute left-1/2 w-52 h-52 rounded-2xl shadow-2xl overflow-hidden z-20 cursor-pointer"
           style={{ top: "50%", transform: "translate(-50%, -60%)" }}
