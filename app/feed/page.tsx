@@ -895,7 +895,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
   // The iframe remounts on videoId change, so its reported state is stale until it reports again
-  useEffect(() => { setVideoPlaying(false); }, [videoId]);
+  useEffect(() => { setVideoPlaying(false); durationRef.current = 0; }, [videoId]);
 
   const sendYouTubeCommand = (
     func: "pauseVideo" | "playVideo" | "seekTo",
@@ -916,6 +916,18 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
     }
   };
 
+  // Position updates often carry currentTime with no duration, so hold onto the last one
+  const durationRef = useRef(0);
+  // Position updates arrive several times a second, so debounce the seek
+  const restartingRef = useRef(false);
+  const restartVideo = () => {
+    if (restartingRef.current) return;
+    restartingRef.current = true;
+    sendYouTubeCommand("seekTo", [0, true]);
+    sendYouTubeCommand("playVideo");
+    setTimeout(() => { restartingRef.current = false; }, 2000);
+  };
+
   // Listen for YouTube iframe API errors (101/150 = embedding blocked by owner)
   // and fall back to album art so we never show "Video unavailable".
   useEffect(() => {
@@ -932,16 +944,22 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
         // The embed reports state via `infoDelivery`/info.playerState. It never emits
         // `onStateChange` — that event only exists in the JS API wrapper, not postMessage.
         if (data?.event !== "infoDelivery") return;
-        const state = data?.info?.playerState;
-        if (typeof state !== "number") return;
+        const info = data?.info;
+        if (!info) return;
 
-        setVideoPlaying(state === 1);
+        if (typeof info.playerState === "number") {
+          setVideoPlaying(info.playerState === 1);
+          if (info.playerState === 0) restartVideo();
+        }
 
-        // Loop manually. The `loop`+`playlist` params would do this, but they put the
-        // player in playlist mode, which forces prev/next buttons that controls=0 can't hide.
-        if (state === 0) {
-          sendYouTubeCommand("seekTo", [0, true]);
-          sendYouTubeCommand("playVideo");
+        // Creators can place end-screen cards (suggested videos, playlists) in the final
+        // 20s, and YouTube draws a replay overlay once the video ends. controls=0 hides
+        // none of it, so loop before the tail rather than playing into it.
+        if (typeof info.duration === "number" && info.duration > 0) durationRef.current = info.duration;
+        const duration = durationRef.current;
+        if (typeof info.currentTime === "number" && duration > 0) {
+          const tail = duration > 30 ? 21 : 1;
+          if (info.currentTime >= duration - tail) restartVideo();
         }
       } catch {}
     };
