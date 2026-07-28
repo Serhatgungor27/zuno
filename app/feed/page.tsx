@@ -783,7 +783,6 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const enterTimeRef = useRef<number | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isPlayingRef = useRef(false); // mirror of isPlaying for use inside callbacks
   const [isPlaying, setIsPlaying] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [progress, setProgress] = useState(0);
@@ -891,18 +890,14 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [track.trackId]);
 
-  // Keep ref in sync so onLoad callback always sees latest value
-  useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
-
   // The iframe remounts on videoId change, so its reported state is stale until it reports again
   useEffect(() => {
     setVideoPlaying(false);
     durationRef.current = 0;
-    if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
   }, [videoId]);
 
   const sendYouTubeCommand = (
-    func: "pauseVideo" | "playVideo" | "seekTo",
+    func: "playVideo" | "seekTo",
     args: unknown[] = []
   ) => {
     iframeRef.current?.contentWindow?.postMessage(
@@ -910,19 +905,15 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
     );
   };
 
-  // When the iframe finishes loading, kick off playback if audio is already playing.
-  // This recovers the lost playVideo command that was sent before the iframe existed.
   const handleIframeLoad = () => {
-    // Handshake — the player emits no onStateChange/onError events until it gets this
+    // Handshake — the player reports no state until it gets this. The iframe is remounted
+    // per activation, so `autoplay=1` starts it; an extra playVideo here would only make
+    // the player flash its centre indicator over an already-playing video.
     iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening" }), "*");
-    if (isPlayingRef.current) {
-      setTimeout(() => sendYouTubeCommand("playVideo"), 300);
-    }
   };
 
   // Position updates often carry currentTime with no duration, so hold onto the last one
   const durationRef = useRef(0);
-  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Position updates arrive several times a second, so debounce the seek
   const restartingRef = useRef(false);
   const restartVideo = (resume = false) => {
@@ -955,14 +946,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
         if (!info) return;
 
         if (typeof info.playerState === "number") {
-          if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
-          if (info.playerState === 1) {
-            // Hold the album art a beat longer so YouTube's centre play/pause indicator
-            // has faded before the iframe is uncovered.
-            revealTimerRef.current = setTimeout(() => setVideoPlaying(true), 700);
-          } else {
-            setVideoPlaying(false);
-          }
+          setVideoPlaying(info.playerState === 1);
           if (info.playerState === 0) restartVideo(true);
         }
 
@@ -978,23 +962,20 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
       } catch {}
     };
     window.addEventListener("message", onMessage);
-    return () => {
-      window.removeEventListener("message", onMessage);
-      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
-    };
+    return () => window.removeEventListener("message", onMessage);
   }, []);
 
+  // The muted video is left rolling on pause — the album art covers it. Toggling it would
+  // make the player flash its centre play/pause indicator on every resume.
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!audioRef.current) return;
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
-      sendYouTubeCommand("pauseVideo");
     } else {
       audioRef.current.play().catch(() => {});
       setIsPlaying(true);
-      sendYouTubeCommand("playVideo");
     }
   };
 
@@ -1014,7 +995,6 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
       if (!isPlaying) {
         audioRef.current.play().catch(() => {});
         setIsPlaying(true);
-        sendYouTubeCommand("playVideo");
       }
       setFlashIcon("play");
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
@@ -1027,11 +1007,9 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
     if (isPlaying) {
       audioRef.current.pause();
       setIsPlaying(false);
-      sendYouTubeCommand("pauseVideo");
     } else {
       audioRef.current.play().catch(() => {});
       setIsPlaying(true);
-      sendYouTubeCommand("playVideo");
     }
     setFlashIcon(willPause ? "pause" : "play");
     if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
