@@ -792,6 +792,9 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   const [repostLoading, setRepostLoading] = useState(false);
   const [videoId, setVideoId] = useState<string | null>(null);
   const [showVideo, setShowVideo] = useState(false);
+  // True only while the embed reports PLAYING. Unstarted/buffering/paused/ended all
+  // draw YouTube's own centre button, so we keep album art over the iframe until then.
+  const [videoPlaying, setVideoPlaying] = useState(false);
   const [isActive, setIsActive] = useState(false);
   const [flashIcon, setFlashIcon] = useState<"play" | "pause" | null>(null);
 
@@ -891,6 +894,9 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   // Keep ref in sync so onLoad callback always sees latest value
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
+  // The iframe remounts on videoId change, so its reported state is stale until it reports again
+  useEffect(() => { setVideoPlaying(false); }, [videoId]);
+
   const sendYouTubeCommand = (
     func: "pauseVideo" | "playVideo" | "seekTo",
     args: unknown[] = []
@@ -914,15 +920,26 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   // and fall back to album art so we never show "Video unavailable".
   useEffect(() => {
     const onMessage = (e: MessageEvent) => {
+      // Every card mounts this listener, so ignore other cards' players.
+      if (e.source !== iframeRef.current?.contentWindow) return;
       try {
         const data = typeof e.data === "string" ? JSON.parse(e.data) : e.data;
         if (data?.event === "onError" && (data?.info === 100 || data?.info === 101 || data?.info === 150)) {
           setShowVideo(false);
           setVideoId(null);
+          return;
         }
+        // The embed reports state via `infoDelivery`/info.playerState. It never emits
+        // `onStateChange` — that event only exists in the JS API wrapper, not postMessage.
+        if (data?.event !== "infoDelivery") return;
+        const state = data?.info?.playerState;
+        if (typeof state !== "number") return;
+
+        setVideoPlaying(state === 1);
+
         // Loop manually. The `loop`+`playlist` params would do this, but they put the
         // player in playlist mode, which forces prev/next buttons that controls=0 can't hide.
-        if (data?.event === "onStateChange" && data?.info === 0) {
+        if (state === 0) {
           sendYouTubeCommand("seekTo", [0, true]);
           sendYouTubeCommand("playVideo");
         }
@@ -1071,7 +1088,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
 
       {/* Also covers the iframe while paused: YouTube draws its own centre play button
           over a paused embed and controls=0 doesn't suppress it. */}
-      {(!videoId || !showVideo || !isPlaying) && track.albumImage && (
+      {(!videoId || !showVideo || !isPlaying || !videoPlaying) && track.albumImage && (
         <div
           className="absolute inset-0 bg-cover bg-center scale-110"
           style={{ backgroundImage: `url(${track.albumImage})`, filter: "blur(40px) brightness(0.3)" }}
@@ -1082,7 +1099,7 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
       <div className="absolute inset-0 z-10" style={{ backgroundImage: "linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, transparent 18%), linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0.5) 30%, transparent 60%)" }} />
 
       {/* Album art — centered, shown when no video or while paused */}
-      {(!videoId || !showVideo || !isPlaying) && track.albumImage && (
+      {(!videoId || !showVideo || !isPlaying || !videoPlaying) && track.albumImage && (
         <div
           className="absolute left-1/2 w-52 h-52 rounded-2xl shadow-2xl overflow-hidden z-20 cursor-pointer"
           style={{ top: "50%", transform: "translate(-50%, -60%)" }}
