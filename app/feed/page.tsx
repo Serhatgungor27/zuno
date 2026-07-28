@@ -891,15 +891,20 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   // Keep ref in sync so onLoad callback always sees latest value
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
-  const sendYouTubeCommand = (func: "pauseVideo" | "playVideo") => {
+  const sendYouTubeCommand = (
+    func: "pauseVideo" | "playVideo" | "seekTo",
+    args: unknown[] = []
+  ) => {
     iframeRef.current?.contentWindow?.postMessage(
-      JSON.stringify({ event: "command", func, args: [] }), "*"
+      JSON.stringify({ event: "command", func, args }), "*"
     );
   };
 
   // When the iframe finishes loading, kick off playback if audio is already playing.
   // This recovers the lost playVideo command that was sent before the iframe existed.
   const handleIframeLoad = () => {
+    // Handshake — the player emits no onStateChange/onError events until it gets this
+    iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ event: "listening" }), "*");
     if (isPlayingRef.current) {
       setTimeout(() => sendYouTubeCommand("playVideo"), 300);
     }
@@ -914,6 +919,12 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
         if (data?.event === "onError" && (data?.info === 100 || data?.info === 101 || data?.info === 150)) {
           setShowVideo(false);
           setVideoId(null);
+        }
+        // Loop manually. The `loop`+`playlist` params would do this, but they put the
+        // player in playlist mode, which forces prev/next buttons that controls=0 can't hide.
+        if (data?.event === "onStateChange" && data?.info === 0) {
+          sendYouTubeCommand("seekTo", [0, true]);
+          sendYouTubeCommand("playVideo");
         }
       } catch {}
     };
@@ -1045,14 +1056,14 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
           style={{
             top: "50%",
             left: "50%",
-            /* Scale to fill height; width = height * (16/9) so it extends beyond edges */
-            width: "calc(100svh * 1.7778)",
-            height: "100svh",
+            /* Oversized 135% so YouTube's title bar and bottom chrome sit outside the viewport */
+            width: "calc(135svh * 1.7778)",
+            height: "135svh",
             transform: "translate(-50%, -50%)",
             border: "none",
             filter: "brightness(0.5)",
           }}
-          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&loop=1&playlist=${videoId}&controls=0&showinfo=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1`}
+          src={`https://www.youtube.com/embed/${videoId}?autoplay=1&mute=1&controls=0&rel=0&modestbranding=1&enablejsapi=1&playsinline=1&iv_load_policy=3&disablekb=1&fs=0`}
           allow="autoplay"
           onLoad={handleIframeLoad}
         />
