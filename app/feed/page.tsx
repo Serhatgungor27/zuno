@@ -895,7 +895,11 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
   useEffect(() => { isPlayingRef.current = isPlaying; }, [isPlaying]);
 
   // The iframe remounts on videoId change, so its reported state is stale until it reports again
-  useEffect(() => { setVideoPlaying(false); durationRef.current = 0; }, [videoId]);
+  useEffect(() => {
+    setVideoPlaying(false);
+    durationRef.current = 0;
+    if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+  }, [videoId]);
 
   const sendYouTubeCommand = (
     func: "pauseVideo" | "playVideo" | "seekTo",
@@ -918,13 +922,16 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
 
   // Position updates often carry currentTime with no duration, so hold onto the last one
   const durationRef = useRef(0);
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Position updates arrive several times a second, so debounce the seek
   const restartingRef = useRef(false);
-  const restartVideo = () => {
+  const restartVideo = (resume = false) => {
     if (restartingRef.current) return;
     restartingRef.current = true;
+    // Seeking a playing video keeps it playing; only an ended one needs the extra nudge.
+    // A needless playVideo makes YouTube flash its centre state indicator every loop.
     sendYouTubeCommand("seekTo", [0, true]);
-    sendYouTubeCommand("playVideo");
+    if (resume) sendYouTubeCommand("playVideo");
     setTimeout(() => { restartingRef.current = false; }, 2000);
   };
 
@@ -948,8 +955,15 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
         if (!info) return;
 
         if (typeof info.playerState === "number") {
-          setVideoPlaying(info.playerState === 1);
-          if (info.playerState === 0) restartVideo();
+          if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+          if (info.playerState === 1) {
+            // Hold the album art a beat longer so YouTube's centre play/pause indicator
+            // has faded before the iframe is uncovered.
+            revealTimerRef.current = setTimeout(() => setVideoPlaying(true), 700);
+          } else {
+            setVideoPlaying(false);
+          }
+          if (info.playerState === 0) restartVideo(true);
         }
 
         // Creators can place end-screen cards (suggested videos, playlists) in the final
@@ -964,7 +978,10 @@ function DiscoverCard({ track, sessionId, audioUnlocked, onUnlock, onLike }: { t
       } catch {}
     };
     window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      if (revealTimerRef.current) clearTimeout(revealTimerRef.current);
+    };
   }, []);
 
   const togglePlay = (e: React.MouseEvent) => {
