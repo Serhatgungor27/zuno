@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { sanitizeFilterValue } from "@/lib/pgrest";
 import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
 
 export const runtime = "nodejs";
@@ -20,10 +21,11 @@ export async function GET(req: Request) {
   const currentUserId = await getCurrentUserId();
 
   // Resolve spotify_id from username or spotify_id
+  const safeUserId = sanitizeFilterValue(userId);
   const { data: target } = await supabase
     .from("users")
     .select("spotify_id")
-    .or(`spotify_id.eq.${userId},username.eq.${userId}`)
+    .or(`spotify_id.eq.${safeUserId},username.eq.${safeUserId}`)
     .single();
 
   if (!target) return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 404 });
@@ -65,10 +67,11 @@ export async function POST(req: Request) {
   if (!targetUserId) return NextResponse.json({ ok: false, error: "missing_user_id" }, { status: 400 });
 
   // Resolve to spotify_id
+  const safeTargetUserId = sanitizeFilterValue(targetUserId);
   const { data: target } = await supabase
     .from("users")
     .select("spotify_id")
-    .or(`spotify_id.eq.${targetUserId},username.eq.${targetUserId}`)
+    .or(`spotify_id.eq.${safeTargetUserId},username.eq.${safeTargetUserId}`)
     .single();
 
   if (!target) return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 404 });

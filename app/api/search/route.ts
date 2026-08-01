@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { sanitizeSearchTerm } from "@/lib/pgrest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const q = url.searchParams.get("q")?.trim().toLowerCase() ?? "";
+  const q = sanitizeSearchTerm(url.searchParams.get("q")?.trim().toLowerCase() ?? "");
 
   if (!q || q.length < 2) {
     return NextResponse.json({ ok: true, users: [] });

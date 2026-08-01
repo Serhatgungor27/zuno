@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
 import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
+import { sanitizeFilterValue } from "@/lib/pgrest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,7 +86,8 @@ export async function DELETE() {
   // Delete listening history
   await supabase.from("listening_history").delete().eq("user_spotify_id", userId);
   // Delete follows
-  await supabase.from("follows").delete().or(`follower_id.eq.${userId},following_id.eq.${userId}`);
+  const safeUserId = sanitizeFilterValue(userId);
+  await supabase.from("follows").delete().or(`follower_id.eq.${safeUserId},following_id.eq.${safeUserId}`);
   // Delete user
   await supabase.from("users").delete().eq("spotify_id", userId);
 
