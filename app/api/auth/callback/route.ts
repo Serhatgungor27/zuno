@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { AUTH_COOKIE_NAME, signUserId, cookieOptions } from "@/lib/authCookie";
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -87,15 +88,10 @@ export async function GET(req: Request) {
 
   const slug = existingUser?.username ?? spotifyId;
 
-  // Set a readable identity cookie (not httpOnly) so the frontend knows who is logged in
+  // Set a signed, httpOnly identity cookie. The signature (see lib/authCookie) makes the id
+  // unforgeable, and httpOnly keeps it out of reach of page scripts.
   const res = NextResponse.redirect(new URL(`/u/${slug}`, req.url));
-  res.cookies.set("zuno_user_id", spotifyId, {
-    httpOnly: false,
-    secure: false,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30, // 30 days
-  });
+  res.cookies.set(AUTH_COOKIE_NAME, signUserId(spotifyId), cookieOptions());
 
   return res;
 }

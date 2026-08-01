@@ -3,6 +3,7 @@ import { getValidAccessToken } from "@/lib/spotify";
 import { resolveUser } from "@/lib/resolveUser";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,7 +35,7 @@ export async function GET(req: Request) {
 
   // Check if the viewer is the owner
   const cookieStore = await cookies();
-  const viewerId = cookieStore.get("zuno_user_id")?.value ?? null;
+  const viewerId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value) ?? null;
   const isOwner = viewerId === user.spotify_id;
 
   const profileLink = (userData?.profile_link as string | null) || null;

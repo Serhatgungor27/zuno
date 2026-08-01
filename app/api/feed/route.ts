@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,7 +94,7 @@ export async function GET(req: Request) {
 
   if (type === "following") {
     const cookieStore = await cookies();
-    const currentUserId = cookieStore.get("zuno_user_id")?.value;
+    const currentUserId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
     if (!currentUserId) {
       return NextResponse.json({ ok: true, users: [] });
     }

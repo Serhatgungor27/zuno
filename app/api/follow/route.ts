@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 async function getCurrentUserId(): Promise<string | null> {
   const cookieStore = await cookies();
-  return cookieStore.get("zuno_user_id")?.value ?? null;
+  return verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value) ?? null;
 }
 
 // GET /api/follow?userId=X — follow status + counts for a profile

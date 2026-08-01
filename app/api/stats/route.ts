@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { resolveUser } from "@/lib/resolveUser";
 import { cookies } from "next/headers";
+import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,7 +17,7 @@ export async function GET(req: Request) {
 
   // Only the owner sees full stats
   const cookieStore = await cookies();
-  const viewerId = cookieStore.get("zuno_user_id")?.value;
+  const viewerId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
   const isOwner = viewerId === user.spotify_id;
 
   // Check show_top_stats preference

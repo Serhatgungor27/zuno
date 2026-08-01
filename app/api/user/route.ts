@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
 
 /**
  * Resolves the current user's spotify_id from cookies.
@@ -11,7 +12,7 @@ async function getSpotifyIdFromCookies(): Promise<string | null> {
   const cookieStore = await cookies();
 
   // New cookie (set after latest deploy)
-  const zunoId = cookieStore.get("zuno_user_id")?.value;
+  const zunoId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
   if (zunoId) return zunoId;
 
   // Legacy fallback: look up the user by their stored access token

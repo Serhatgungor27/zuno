@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
+import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   const cookieStore = await cookies();
-  const userId = cookieStore.get("zuno_user_id")?.value;
+  const userId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
   if (!userId) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
 
   const { commentId } = await req.json();
