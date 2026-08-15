@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "zuno",
+    "slug": "zuno",
+    "version": "1.0.0",
+    "scheme": "zuno",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#000000",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.serhatgungor.zuno"
+    },
+    "android": {
+      "package": "com.serhatgungor.zuno",
+      "adaptiveIcon": {
+        "backgroundColor": "#000000",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      "expo-web-browser"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiBaseUrl": "https://botan-now-playing.vercel.app"
+    }
+  }
+}
