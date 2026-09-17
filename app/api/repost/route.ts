@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/app/lib/supabase/server";
+import { getApiAuth } from "@/lib/apiAuth";
 import { createClient as createAdmin } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -36,9 +36,10 @@ export async function GET(req: Request) {
 
 // POST /api/repost — add or remove repost { historyId, trackName, artist, albumImage, trackUrl }
 export async function POST(req: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
+  // Accepts either the session cookie (web) or a bearer token (iOS app).
+  const auth = await getApiAuth(req);
+  if (!auth) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
+  const { user } = auth;
 
   const { historyId, trackName, artist, albumImage, trackUrl } = await req.json();
   if (!historyId) return NextResponse.json({ ok: false }, { status: 400 });

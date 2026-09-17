@@ -2,7 +2,10 @@ import Constants from "expo-constants";
 
 import { supabase } from "./supabase";
 
+// EXPO_PUBLIC_API_BASE_URL points the app at a local `next dev` server so backend
+// changes can be tested from the phone before they are deployed. Unset in normal use.
 const apiBaseUrl =
+  process.env.EXPO_PUBLIC_API_BASE_URL ??
   (Constants.expoConfig?.extra?.apiBaseUrl as string | undefined) ??
   "https://botan-now-playing.vercel.app";
 

@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/app/lib/supabase/server";
+import { getApiAuth } from "@/lib/apiAuth";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 
 // GET /api/profile/me
 // Returns current user's profile, auto-creating username if missing.
 // Uses service role key for DB writes to bypass RLS.
-export async function GET() {
-  const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+export async function GET(req: Request) {
+  // Accepts either the session cookie (web) or a bearer token (iOS app).
+  const auth = await getApiAuth(req);
+  if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
+  const { user } = auth;
 
   // Use admin client for DB writes so RLS never blocks profile creation
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const db = serviceKey
     ? createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, serviceKey)
-    : supabase;
+    : auth.client;
 
   // Fetch existing profile
   const { data: profile, error: selectError } = await db

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/app/lib/supabase/server";
+import { getApiAuth } from "@/lib/apiAuth";
 import { createClient as createAdmin } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
@@ -13,10 +13,11 @@ function adminDb() {
 }
 
 // GET /api/taste — get current user's taste profile
-export async function GET() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+export async function GET(req: Request) {
+  // Accepts either the session cookie (web) or a bearer token (iOS app).
+  const auth = await getApiAuth(req);
+  if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
+  const { user } = auth;
 
   const db = adminDb();
   const { data } = await db
@@ -35,9 +36,9 @@ export async function GET() {
 
 // POST /api/taste — save taste profile
 export async function POST(req: Request) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false }, { status: 401 });
+  const auth = await getApiAuth(req);
+  if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
+  const { user } = auth;
 
   const { favorite_artists, music_genres, podcast_genres } = await req.json();
 
