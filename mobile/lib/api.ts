@@ -21,13 +21,12 @@ export class ApiError extends Error {
 }
 
 /**
- * Calls a Next.js API route on the deployed backend.
+ * Calls a Next.js API route on the backend.
  *
- * The Supabase access token is sent as a bearer header. Heads-up: as of this
- * scaffold the backend reads identity from cookies only — `app/lib/supabase/
- * server.ts` builds its client from `cookies()`, and the other 13 routes use
- * the signed Spotify cookie in `lib/authCookie.ts`. Authenticated calls will
- * 401 until a bearer path is added server-side. Public reads work today.
+ * The Supabase access token goes out as a bearer header; server-side
+ * `lib/apiAuth.ts` accepts it on the routes that authenticate through Supabase
+ * (profile/me, taste, repost). The other 13 routes key on `users.spotify_id`,
+ * which a Supabase login cannot produce — see backlog item B.
  */
 export async function api<T>(
   path: string,
@@ -46,15 +45,50 @@ export async function api<T>(
   const response = await fetch(`${apiBaseUrl}${path}`, { ...init, headers });
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
+    throw new ApiError(response.status, path, await failureMessage(response));
+  }
+
+  // A 200 that isn't JSON means something served a page where an API should be
+  // — a proxy, a login redirect, a misrouted path. Say that, rather than
+  // letting response.json() throw an unreadable parse error.
+  if (!isJson(response)) {
     throw new ApiError(
       response.status,
       path,
-      body.slice(0, 200) || response.statusText
+      `expected JSON, got ${response.headers.get("content-type") ?? "no content-type"}`
     );
   }
 
   return response.json() as Promise<T>;
+}
+
+function isJson(response: Response): boolean {
+  return (response.headers.get("content-type") ?? "").includes("json");
+}
+
+/**
+ * One readable line for a failed request. Server error pages are HTML, and
+ * pasting markup into the UI tells the reader nothing, so only a genuine JSON
+ * error payload contributes detail; anything else falls back to the status.
+ */
+async function failureMessage(response: Response): Promise<string> {
+  const status = response.statusText
+    ? `HTTP ${response.status} ${response.statusText}`
+    : `HTTP ${response.status}`;
+
+  if (!isJson(response)) return status;
+
+  const body = await response.text().catch(() => "");
+  try {
+    const parsed = JSON.parse(body) as { error?: unknown; message?: unknown };
+    const detail = parsed.error ?? parsed.message;
+    if (typeof detail === "string" && detail.length > 0) {
+      return `${status} — ${detail}`;
+    }
+  } catch {
+    // Not parseable after all; the status alone is more use than raw bytes.
+  }
+  return status;
 }
 
 export { apiBaseUrl };
