@@ -45,3 +45,50 @@ export type SearchUser = {
 };
 
 export type SearchResponse = { ok: boolean; users: SearchUser[] };
+
+/** GET /api/user — the Spotify-side account (keyed on spotify_id). */
+export type ZunoUser = {
+  spotify_id: string;
+  display_name: string | null;
+  image: string | null;
+  username: string | null;
+};
+
+/** GET /api/follow?userId= */
+export type FollowStats = {
+  ok: boolean;
+  followerCount: number;
+  followingCount: number;
+  isFollowing: boolean;
+  isSelf: boolean;
+};
+
+/** GET /api/history?userId= — the "Vibes" grid. */
+export type HistoryTrack = {
+  track_id: string;
+  track_name: string;
+  artist: string;
+  album_image: string | null;
+  track_url: string | null;
+  played_at: string;
+  repeat_count: number | null;
+};
+
+/** GET /api/repost?username= */
+export type Repost = {
+  id: string;
+  history_id: string;
+  track_name: string;
+  artist: string;
+  album_image: string | null;
+  track_url: string | null;
+  created_at: string;
+};
+
+/** GET /api/taste */
+export type Taste = {
+  ok: boolean;
+  favorite_artists: string[];
+  music_genres: string[];
+  podcast_genres: string[];
+};
