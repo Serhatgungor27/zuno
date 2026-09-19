@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
+import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { PlayerSheet, type NowPlaying } from "../../components/PlayerSheet";
 import { api } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { theme } from "../../lib/theme";
@@ -44,6 +45,9 @@ export default function Profile() {
   const [taste, setTaste] = useState<Taste | null>(null);
 
   const [tab, setTab] = useState<TabKey>("vibes");
+  const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
+  const [playingKey, setPlayingKey] = useState<string | undefined>(undefined);
+  const player = useAudioPlayer(null);
   const [scrollY, setScrollY] = useState(0);
   const [headerHeight, setHeaderHeight] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -87,6 +91,54 @@ export default function Profile() {
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [load]);
+
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+  }, []);
+
+  /**
+   * History and repost rows carry no preview URL, so the track is resolved on
+   * demand. The card appears immediately in a loading state rather than after
+   * the lookup — a tap that does nothing for a second reads as a broken tap.
+   */
+  const playTrack = useCallback(
+    async (item: GridItem) => {
+      setPlayingKey(item.key);
+      setNowPlaying({
+        title: item.label,
+        artist: item.artist,
+        image: item.image,
+        url: null,
+        spotifyUrl: item.spotifyUrl ?? null,
+        historyId: item.trackId,
+      });
+      try {
+        const params = new URLSearchParams({ track: item.label, artist: item.artist });
+        if (item.trackId) params.set("trackId", item.trackId);
+        const res = await api<{ previewUrl: string | null }>(`/api/preview?${params}`);
+        if (!res.previewUrl) {
+          setNowPlaying((p) => (p ? { ...p, error: "No preview available" } : p));
+          return;
+        }
+        setNowPlaying((p) => (p ? { ...p, artist: item.artist, url: res.previewUrl } : p));
+        player.replace(res.previewUrl);
+        // Loop the 30s preview, but never let this stop playback starting.
+        try {
+          player.loop = true;
+        } catch {}
+        player.play();
+      } catch {
+        setNowPlaying((p) => (p ? { ...p, error: "Could not load preview" } : p));
+      }
+    },
+    [player]
+  );
+
+  const stopTrack = useCallback(() => {
+    player.pause();
+    setNowPlaying(null);
+    setPlayingKey(undefined);
+  }, [player]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -166,10 +218,14 @@ export default function Profile() {
             key: v.track_id + v.played_at,
             image: v.album_image,
             label: v.track_name,
-            url: trackUrl(v.track_url, v.track_name, v.artist),
+            artist: v.artist,
+            trackId: v.track_id,
+            spotifyUrl: v.track_url,
           }))}
           emptyTitle="No vibes yet"
           emptyBody="Your listening history will appear here."
+          onPress={playTrack}
+          playingKey={playingKey}
         />
       ) : tab === "reposts" ? (
         <Grid
@@ -177,10 +233,14 @@ export default function Profile() {
             key: r.id,
             image: r.album_image,
             label: r.track_name,
-            url: trackUrl(r.track_url, r.track_name, r.artist),
+            artist: r.artist,
+            trackId: r.history_id,
+            spotifyUrl: r.track_url,
           }))}
           emptyTitle="No reposts yet"
           emptyBody="Tracks you repost will appear here."
+          onPress={playTrack}
+          playingKey={playingKey}
         />
       ) : (
         <TasteView taste={taste} />
@@ -196,6 +256,10 @@ export default function Profile() {
         <TabButton icon="repeat" label="Reposts" active={tab === "reposts"} onPress={() => setTab("reposts")} />
         <TabButton icon="heart" label="Taste" active={tab === "taste"} onPress={() => setTab("taste")} />
       </View>
+    ) : null}
+
+    {nowPlaying ? (
+      <PlayerSheet track={nowPlaying} player={player} onClose={stopTrack} />
     ) : null}
     </View>
   );
@@ -234,24 +298,27 @@ function TabButton({
   );
 }
 
-/**
- * Where a tile goes when tapped. Matches the web profile, which links to
- * track_url and falls back to a Spotify search when the row has none.
- */
-function trackUrl(url: string | null, name: string, artist: string): string {
-  if (url) return url;
-  const q = encodeURIComponent(`${name} ${artist}`.trim());
-  return `https://open.spotify.com/search/${q}`;
-}
+type GridItem = {
+  key: string;
+  image: string | null;
+  label: string;
+  artist: string;
+  trackId?: string;
+  spotifyUrl?: string | null;
+};
 
 function Grid({
   items,
   emptyTitle,
   emptyBody,
+  onPress,
+  playingKey,
 }: {
-  items: { key: string; image: string | null; label: string; url: string }[];
+  items: GridItem[];
   emptyTitle: string;
   emptyBody: string;
+  onPress: (item: GridItem) => void;
+  playingKey?: string;
 }) {
   if (items.length === 0) {
     return (
@@ -271,10 +338,7 @@ function Grid({
         <Pressable
           key={item.key}
           style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
-          onPress={() => {
-            // Opens the Spotify app when installed, the web player otherwise.
-            Linking.openURL(item.url).catch(() => {});
-          }}
+          onPress={() => onPress(item)}
         >
           {item.image ? (
             <Image source={{ uri: item.image }} style={styles.tileImage} />
@@ -282,6 +346,11 @@ function Grid({
             <View style={[styles.tileImage, styles.avatarFallback]} />
           )}
           <View style={styles.tileScrim} />
+          {playingKey === item.key ? (
+            <View style={styles.tilePlaying}>
+              <Ionicons name="volume-high" size={14} color={theme.accent} />
+            </View>
+          ) : null}
           <Text style={styles.tileLabel} numberOfLines={1}>
             {item.label}
           </Text>
@@ -380,6 +449,17 @@ const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", gap: GUTTER, paddingTop: GUTTER },
   tile: { width: TILE, height: TILE, backgroundColor: theme.surface },
   tilePressed: { opacity: 0.6 },
+  tilePlaying: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   tileImage: { width: "100%", height: "100%" },
   tileScrim: {
     position: "absolute",

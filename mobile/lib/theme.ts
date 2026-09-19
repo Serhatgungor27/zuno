@@ -6,4 +6,6 @@ export const theme = {
   muted: "#8b8b8b",
   border: "#1f1f1f",
   surface: "#0d0d0d",
+  /** Raised surfaces — sheets and modals, so they read apart from the black app. */
+  elevated: "#1c1c1e",
 } as const;

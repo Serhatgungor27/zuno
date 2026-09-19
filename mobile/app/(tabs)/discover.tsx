@@ -57,6 +57,10 @@ export default function Discover() {
     if (!active?.previewUrl) return;
     try {
       player.replace(active.previewUrl);
+      // Loop the 30s preview, but never let this stop playback starting.
+      try {
+        player.loop = true;
+      } catch {}
       player.play();
     } catch {
       // A source that fails to load shouldn't take the screen down with it.
