@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { getValidAccessToken } from "@/lib/spotify";
 import { resolveUser } from "@/lib/resolveUser";
 import { supabase } from "@/lib/supabase";
-import { cookies } from "next/headers";
-import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
+import { resolveViewerId } from "@/lib/identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,8 +33,7 @@ export async function GET(req: Request) {
   const lastActive = (userData?.now_playing_updated_at as string | null) ?? (userData?.updated_at as string | null) ?? null;
 
   // Check if the viewer is the owner
-  const cookieStore = await cookies();
-  const viewerId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value) ?? null;
+  const viewerId = await resolveViewerId(req);
   const isOwner = viewerId === user.spotify_id;
 
   const profileLink = (userData?.profile_link as string | null) || null;

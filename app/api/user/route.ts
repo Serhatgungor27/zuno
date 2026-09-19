@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
-import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
+import { resolveViewerId } from "@/lib/identity";
 
 /**
  * Resolves the current user's spotify_id from cookies.
  * Checks zuno_user_id first (new), then falls back to
  * looking up the access token from spotify_access_token (legacy).
  */
-async function getSpotifyIdFromCookies(): Promise<string | null> {
+async function getSpotifyIdFromCookies(req?: Request): Promise<string | null> {
   const cookieStore = await cookies();
 
-  // New cookie (set after latest deploy)
-  const zunoId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
+  // Bearer (iOS) or either cookie, translated to a spotify_id.
+  const zunoId = await resolveViewerId(req);
   if (zunoId) return zunoId;
 
   // Legacy fallback: look up the user by their stored access token
@@ -31,8 +31,8 @@ async function getSpotifyIdFromCookies(): Promise<string | null> {
 }
 
 // GET /api/user — returns current logged-in user info
-export async function GET() {
-  const spotifyId = await getSpotifyIdFromCookies();
+export async function GET(req: Request) {
+  const spotifyId = await getSpotifyIdFromCookies(req);
 
   if (!spotifyId) {
     return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
@@ -53,7 +53,7 @@ export async function GET() {
 
 // POST /api/user — set custom username
 export async function POST(req: Request) {
-  const spotifyId = await getSpotifyIdFromCookies();
+  const spotifyId = await getSpotifyIdFromCookies(req);
 
   if (!spotifyId) {
     return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });

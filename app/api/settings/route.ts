@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
-import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
+import { AUTH_COOKIE_NAME } from "@/lib/authCookie";
+import { resolveViewerId } from "@/lib/identity";
 import { sanitizeFilterValue } from "@/lib/pgrest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function getUser() {
-  const cookieStore = await cookies();
-  const userId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
+async function getUser(req: Request) {
+  const userId = await resolveViewerId(req);
   if (!userId) return null;
   const { data } = await supabase
     .from("users")
@@ -20,15 +20,15 @@ async function getUser() {
 }
 
 // GET — return current settings
-export async function GET() {
-  const user = await getUser();
+export async function GET(req: Request) {
+  const user = await getUser(req);
   if (!user) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
   return NextResponse.json({ ok: true, user });
 }
 
 // POST — update bio or username
 export async function POST(req: Request) {
-  const user = await getUser();
+  const user = await getUser(req);
   if (!user) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
 
   const body = await req.json();
@@ -78,9 +78,8 @@ export async function POST(req: Request) {
 }
 
 // DELETE — delete account permanently
-export async function DELETE() {
-  const cookieStore = await cookies();
-  const userId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
+export async function DELETE(req: Request) {
+  const userId = await resolveViewerId(req);
   if (!userId) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
 
   // Delete listening history

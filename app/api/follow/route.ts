@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { cookies } from "next/headers";
 import { sanitizeFilterValue } from "@/lib/pgrest";
-import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
+import { resolveViewerId } from "@/lib/identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function getCurrentUserId(): Promise<string | null> {
-  const cookieStore = await cookies();
-  return verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value) ?? null;
+async function getCurrentUserId(req: Request): Promise<string | null> {
+  return resolveViewerId(req);
 }
 
 // GET /api/follow?userId=X — follow status + counts for a profile
@@ -18,7 +16,7 @@ export async function GET(req: Request) {
   const userId = url.searchParams.get("userId");
   if (!userId) return NextResponse.json({ ok: false, error: "missing_user_id" }, { status: 400 });
 
-  const currentUserId = await getCurrentUserId();
+  const currentUserId = await getCurrentUserId(req);
 
   // Resolve spotify_id from username or spotify_id
   const safeUserId = sanitizeFilterValue(userId);
@@ -59,7 +57,7 @@ export async function GET(req: Request) {
 
 // POST /api/follow — toggle follow { userId }
 export async function POST(req: Request) {
-  const currentUserId = await getCurrentUserId();
+  const currentUserId = await getCurrentUserId(req);
   if (!currentUserId) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
 
   const body = await req.json();

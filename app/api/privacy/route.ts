@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { cookies } from "next/headers";
-import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
+import { resolveViewerId } from "@/lib/identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // GET — return current ghost mode status
-export async function GET() {
+export async function GET(req: Request) {
   const cookieStore = await cookies();
-  const userId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
+  const userId = await resolveViewerId(req);
   if (!userId) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
 
   const { data } = await supabase
@@ -22,9 +22,9 @@ export async function GET() {
 }
 
 // POST — toggle ghost mode
-export async function POST() {
+export async function POST(req: Request) {
   const cookieStore = await cookies();
-  const userId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
+  const userId = await resolveViewerId(req);
   if (!userId) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
 
   const { data: current } = await supabase

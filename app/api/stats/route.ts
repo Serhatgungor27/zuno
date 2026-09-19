@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { resolveUser } from "@/lib/resolveUser";
-import { cookies } from "next/headers";
-import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
+import { resolveViewerId } from "@/lib/identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,8 +15,7 @@ export async function GET(req: Request) {
   if (!user) return NextResponse.json({ ok: false }, { status: 404 });
 
   // Only the owner sees full stats
-  const cookieStore = await cookies();
-  const viewerId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
+  const viewerId = await resolveViewerId(req);
   const isOwner = viewerId === user.spotify_id;
 
   // Check show_top_stats preference

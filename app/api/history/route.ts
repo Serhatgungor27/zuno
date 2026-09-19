@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
 import { resolveUser } from "@/lib/resolveUser";
-import { cookies } from "next/headers";
-import { verifyUserId, AUTH_COOKIE_NAME } from "@/lib/authCookie";
+import { resolveViewerId } from "@/lib/identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,8 +22,7 @@ export async function GET(req: Request) {
     .single();
 
   if (userData?.ghost_mode) {
-    const cookieStore = await cookies();
-    const viewerId = verifyUserId(cookieStore.get(AUTH_COOKIE_NAME)?.value);
+    const viewerId = await resolveViewerId(req);
     if (viewerId !== user.spotify_id) {
       return NextResponse.json({ ok: true, tracks: [] });
     }
