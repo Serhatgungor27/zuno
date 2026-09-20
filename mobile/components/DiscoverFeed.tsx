@@ -664,6 +664,12 @@ function Glyph({ cardH }: { cardH: number }) {
 
 function AudioGlyph({ player, cardH }: { player: AudioPlayer; cardH: number }) {
   const status = useAudioPlayerStatus(player);
+
+  // Same reasoning as the video: a preview that is still loading or buffering
+  // reports playing: false without being paused, and drawing a play button for
+  // that moment is what makes arriving on a card look like a stutter.
+  if (!status.isLoaded || status.isBuffering) return null;
+
   return status.playing ? null : <Glyph cardH={cardH} />;
 }
 
@@ -671,6 +677,15 @@ function VideoGlyph({ video, cardH }: { video: VideoPlayer; cardH: number }) {
   const { isPlaying } = useEvent(video, "playingChange", {
     isPlaying: video.playing,
   });
+  const statusEvent = useEvent(video, "statusChange");
+  const status = statusEvent?.status ?? video.status;
+
+  // A player that is still loading reports playing: false, which is not the
+  // same as paused. Drawing the play button then made every video card flash
+  // one for a moment before it started. Nothing is shown until the player is
+  // genuinely ready and genuinely stopped.
+  if (status !== "readyToPlay") return null;
+
   return isPlaying ? null : <Glyph cardH={cardH} />;
 }
 
