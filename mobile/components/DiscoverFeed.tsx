@@ -138,6 +138,10 @@ export function DiscoverFeed({
   const player = useAudioPlayer(null);
   const video = useVideoPlayer(null, (p) => {
     p.loop = true;
+    // Without this the player emits no timeUpdate at all — it defaults to 0,
+    // which means "never" — and the progress bar sits at zero through the
+    // whole video. Four times a second is smooth enough for a 30s clip.
+    p.timeUpdateEventInterval = 0.25;
   });
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   // The track whose video is actually loaded in the player right now. The
