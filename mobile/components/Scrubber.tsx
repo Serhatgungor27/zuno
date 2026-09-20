@@ -7,7 +7,10 @@ export function Scrubber({
   onSeek,
   progress,
   duration,
+  onScrubStateChange,
 }: {
+  /** Lets the screen switch off any pager that would otherwise eat the drag. */
+  onScrubStateChange?: (scrubbing: boolean) => void;
   /** Seconds to seek to. Takes a callback rather than a player so the same
    *  bar can drive audio previews and music videos alike. */
   onSeek: (seconds: number) => void;
@@ -52,10 +55,17 @@ export function Scrubber({
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
+        // Claim in the capture phase so an ancestor cannot take the drag
+        // first, and block the native scroll view outright — a horizontal
+        // pager otherwise reads a scrub as a page swipe.
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+        onShouldBlockNativeResponder: () => true,
         // Do not let the sheet's drag-to-dismiss steal a scrub.
         onPanResponderTerminationRequest: () => false,
         onPanResponderGrant: (e) => {
           scrubbing.current = true;
+          onScrubStateChange?.(true);
           Animated.parallel([
             Animated.spring(knobScale, {
               toValue: 1,
@@ -85,6 +95,7 @@ export function Scrubber({
               useNativeDriver: true,
             }),
           ]).start();
+          onScrubStateChange?.(false);
           if (durationRef.current > 0) {
             try {
               onSeek(scrubPos.current * durationRef.current);
@@ -94,7 +105,7 @@ export function Scrubber({
           }
         },
       }),
-    [knobScale, barScale, onSeek, setFromX]
+    [knobScale, barScale, onSeek, setFromX, onScrubStateChange]
   );
 
   return (

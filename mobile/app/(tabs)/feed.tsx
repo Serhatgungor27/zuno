@@ -45,6 +45,9 @@ const TABS: { key: Tab; label: string }[] = [
 export default function Feed() {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>("discover");
+  // True while Discover's progress bar is being dragged; the pager stands down
+  // so the drag scrubs instead of changing tab.
+  const [scrubbing, setScrubbing] = useState(false);
   const [discoverKey, setDiscoverKey] = useState(0);
 
   const pager = useRef<ScrollView>(null);
@@ -62,6 +65,9 @@ export default function Feed() {
         ref={pager}
         horizontal
         pagingEnabled
+        // Dragging Discover's progress bar is a horizontal gesture too, and
+        // the pager would otherwise read it as a swipe to the next tab.
+        scrollEnabled={!scrubbing}
         showsHorizontalScrollIndicator={false}
         contentOffset={{ x: WIDTH * TABS.findIndex((t) => t.key === "discover"), y: 0 }}
         onMomentumScrollEnd={(e) => {
@@ -76,7 +82,11 @@ export default function Feed() {
         <View style={styles.page}>
           {/* Paused when swiped away from, or it keeps playing behind the
               other tabs. */}
-          <DiscoverFeed refreshKey={discoverKey} isActive={tab === "discover"} />
+          <DiscoverFeed
+            refreshKey={discoverKey}
+            isActive={tab === "discover"}
+            onScrubbing={setScrubbing}
+          />
         </View>
         <View style={styles.page}>
           <ListFeed tab="trending" />

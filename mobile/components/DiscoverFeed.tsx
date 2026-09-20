@@ -92,10 +92,13 @@ function logInteraction(action: string, track: DiscoverTrack) {
 export function DiscoverFeed({
   refreshKey = 0,
   isActive = true,
+  onScrubbing,
 }: {
   refreshKey?: number;
   /** False while the pager has swiped to another tab. */
   isActive?: boolean;
+  /** Raised while a scrub is in progress so the screen can freeze its pager. */
+  onScrubbing?: (scrubbing: boolean) => void;
 }) {
   const listRef = useRef<FlatList<DiscoverTrack>>(null);
   const pageRef = useRef(0);
@@ -123,6 +126,8 @@ export function DiscoverFeed({
   const [focused, setFocused] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
+  // A scrub must not also scroll the cards underneath it.
+  const [scrubbing, setScrubbing] = useState(false);
 
   // One player, re-pointed as the active card changes. Creating a player per
   // card would keep 60 of them alive and fight over the audio session.
@@ -243,11 +248,14 @@ export function DiscoverFeed({
       try {
         player.loop = true;
       } catch {}
-      player.play();
+      // If the lookahead already found a video for this track, the video is
+      // about to carry the sound. Starting the preview here would play the
+      // song twice for the second it takes the video to load.
+      if (!videoUrls.get(active.trackId)) player.play();
     } catch {
       // A source that fails to load shouldn't take the screen down with it.
     }
-  }, [active?.previewUrl, player]);
+  }, [active?.previewUrl, active?.trackId, player]);
 
   // Look up this card's video, and the next few ahead of time so they're
   // already answered by the time you swipe onto them.
@@ -284,27 +292,24 @@ export function DiscoverFeed({
       return;
     }
 
-    // Hide the video and silence the preview for the moment the swap takes.
+    // Hide the video while the swap happens. Playback is not touched here —
+    // the effect above owns that, and two places starting players was the bug.
     setVideoFor(null);
-    player.pause();
 
     video.replaceAsync(videoUrl).then(
       () => {
         // A newer card has already claimed the player — leave it alone.
         if (swapRef.current !== turn) return;
         setVideoFor(trackId);
-        video.play();
       },
       () => {
         if (swapRef.current !== turn) return;
-        // The video failed to load — put the audio preview back rather than
-        // leaving the card silent.
+        // The video failed to load — fall back to the audio preview.
         setVideoUrl(null);
         setVideoFor(null);
-        player.play();
       }
     );
-  }, [videoUrl, active?.trackId, video, player]);
+  }, [videoUrl, active?.trackId, video]);
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(
@@ -314,28 +319,52 @@ export function DiscoverFeed({
     }
   ).current;
 
-  // Silence it the moment the pager moves away or the screen loses focus;
-  // resume when it comes back.
+  /**
+   * The single place that decides which player is making sound.
+   *
+   * This used to be spread across three effects, and during a video swap they
+   * disagreed: one saw no video loaded and restarted the audio preview while
+   * another started the video, so both played at once — and the pause button,
+   * which only knows about the video, could not stop the song.
+   */
   useEffect(() => {
-    if (!isActive || !focused) {
-      player.pause();
+    const shouldPlay = isActive && focused && tracks.length > 0;
+
+    const quiet = (p: { pause: () => void }) => {
       try {
-        video.pause();
+        p.pause();
       } catch {
         // Nothing loaded yet.
       }
-    } else if (tracks.length > 0) {
-      if (videoFor) video.play();
-      else player.play();
+    };
+
+    if (!shouldPlay) {
+      quiet(player);
+      quiet(video);
+      return;
+    }
+
+    if (videoFor) {
+      quiet(player);
+      video.play();
+    } else {
+      quiet(video);
+      player.play();
     }
   }, [isActive, focused, player, video, videoFor, tracks.length]);
 
   // Read the state off the players rather than holding it here — that is the
   // whole point of not subscribing at this level.
   const toggle = useCallback(() => {
+    // Pause both regardless of which one is supposed to be playing: if they
+    // ever disagree, a tap on pause should still produce silence.
     if (videoFor) {
-      if (video.playing) video.pause();
-      else video.play();
+      if (video.playing) {
+        video.pause();
+        player.pause();
+      } else {
+        video.play();
+      }
       return;
     }
     if (player.playing) player.pause();
@@ -406,6 +435,14 @@ export function DiscoverFeed({
     });
   }, []);
 
+  const handleScrub = useCallback(
+    (active: boolean) => {
+      setScrubbing(active);
+      onScrubbing?.(active);
+    },
+    [onScrubbing]
+  );
+
   const renderItem = useCallback(
     ({ item, index }: { item: DiscoverTrack; index: number }) => (
       <Card
@@ -420,6 +457,7 @@ export function DiscoverFeed({
         onDislike={() => dislike(item)}
         reposted={repostedIds.has(item.trackId)}
         onReposted={onReposted}
+        onScrub={handleScrub}
       />
     ),
     [
@@ -434,6 +472,7 @@ export function DiscoverFeed({
       dislike,
       repostedIds,
       onReposted,
+      handleScrub,
     ]
   );
 
@@ -476,6 +515,7 @@ export function DiscoverFeed({
         offset: cardH * index,
         index,
       })}
+      scrollEnabled={!scrubbing}
       windowSize={3}
       maxToRenderPerBatch={3}
       initialNumToRender={2}
@@ -497,6 +537,7 @@ function Card({
   onDislike,
   reposted,
   onReposted,
+  onScrub,
 }: {
   track: DiscoverTrack;
   cardH: number;
@@ -510,6 +551,7 @@ function Card({
   onDislike: () => void;
   reposted: boolean;
   onReposted: (trackId: string, next: boolean) => void;
+  onScrub: (scrubbing: boolean) => void;
 }) {
   return (
     <Pressable onPress={onToggle} style={[styles.card, { height: cardH }]}>
@@ -572,9 +614,9 @@ function Card({
 
         {isActive ? (
           video ? (
-            <VideoBar video={video} />
+            <VideoBar video={video} onScrub={onScrub} />
           ) : (
-            <AudioBar player={player} />
+            <AudioBar player={player} onScrub={onScrub} />
           )
         ) : (
           <Scrubber onSeek={() => {}} progress={0} duration={0} />
@@ -610,10 +652,17 @@ function VideoGlyph({ video, cardH }: { video: VideoPlayer; cardH: number }) {
   return isPlaying ? null : <Glyph cardH={cardH} />;
 }
 
-function AudioBar({ player }: { player: AudioPlayer }) {
+function AudioBar({
+  player,
+  onScrub,
+}: {
+  player: AudioPlayer;
+  onScrub: (scrubbing: boolean) => void;
+}) {
   const status = useAudioPlayerStatus(player);
   return (
     <Scrubber
+      onScrubStateChange={onScrub}
       onSeek={(t) => player.seekTo(t)}
       progress={status.duration > 0 ? status.currentTime / status.duration : 0}
       duration={status.duration}
@@ -621,7 +670,13 @@ function AudioBar({ player }: { player: AudioPlayer }) {
   );
 }
 
-function VideoBar({ video }: { video: VideoPlayer }) {
+function VideoBar({
+  video,
+  onScrub,
+}: {
+  video: VideoPlayer;
+  onScrub: (scrubbing: boolean) => void;
+}) {
   // timeUpdate carries currentTime only; duration is a player property that
   // fills in once the source loads.
   const tick = useEvent(video, "timeUpdate");
@@ -629,6 +684,7 @@ function VideoBar({ video }: { video: VideoPlayer }) {
   const duration = video.duration ?? 0;
   return (
     <Scrubber
+      onScrubStateChange={onScrub}
       onSeek={(t) => {
         video.currentTime = t;
       }}
