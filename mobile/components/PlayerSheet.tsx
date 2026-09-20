@@ -471,8 +471,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.35)",
   },
   // Everything below the artwork, matching the Discover card's stack.
-  bottom: { paddingLeft: 18, paddingRight: 78, gap: 10 },
-  meta: { gap: 1 },
+  // The block reserved 78pt on the right for the rail, which was not enough
+  // for three hand-off buttons — the last one overflowed under the share
+  // icon. The scrubber and buttons take the full width now; only the title
+  // and artist still keep clear, since they sit at the rail's height.
+  bottom: { paddingLeft: 18, paddingRight: 18, gap: 10 },
+  meta: { gap: 1, paddingRight: 78 },
   title: {
     color: "#fff",
     fontSize: 21,
@@ -482,7 +486,9 @@ const styles = StyleSheet.create({
     textShadowRadius: 8,
   },
   artist: { color: "rgba(255,255,255,0.7)", fontSize: 15 },
-  rail: { position: "absolute", right: 12, bottom: 90, gap: 14, alignItems: "center" },
+  // Sits above the scrubber and the hand-off buttons. It used to sit level
+  // with them and rely on the block's right padding to stay clear.
+  rail: { position: "absolute", right: 12, bottom: 200, gap: 14, alignItems: "center" },
   railButton: {
     width: 44,
     height: 44,
