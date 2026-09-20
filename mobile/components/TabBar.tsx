@@ -53,9 +53,13 @@ export function TabBar() {
     inputRange: [0, 1],
     outputRange: [1, 0.82],
   });
+  // The bar rests 19pt above the screen edge (insets.bottom 34, less the 15
+  // the wrap takes back). Scaling to 0.82 lifts its bottom edge by about 4pt,
+  // so sinking 18 left it roughly 5pt from the bottom — almost touching. 6
+  // keeps around 17pt of air while still reading as a sink.
   const translateY = tabBarRetract.interpolate({
     inputRange: [0, 1],
-    outputRange: [0, 18],
+    outputRange: [0, 6],
   });
   const opacity = tabBarRetract.interpolate({
     inputRange: [0, 1],
