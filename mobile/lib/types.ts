@@ -127,3 +127,28 @@ export type PublicProfile = {
   bio: string | null;
   created_at: string | null;
 };
+
+/** GET /api/notifications */
+export type ZunoNotification = {
+  id: string;
+  type: "follow" | "vibe_like" | "vibe_comment" | string;
+  actor_id: string | null;
+  actor_name: string | null;
+  actor_image: string | null;
+  actor_username: string | null;
+  track_name: string | null;
+  history_id: string | null;
+  comment_text: string | null;
+  read: boolean | null;
+  created_at: string;
+};
+
+/** GET /api/feed?type=trending */
+export type TrendingTrack = {
+  track_id: string;
+  track_name: string;
+  artist: string;
+  album_image: string | null;
+  track_url: string | null;
+  count: number;
+};

@@ -1,5 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
-import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
+import {
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  type AudioPlayer,
+} from "expo-audio";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,13 +19,27 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { api } from "../../lib/api";
-import { theme } from "../../lib/theme";
-import type { DiscoverResponse, DiscoverTrack } from "../../lib/types";
+import { Scrubber } from "./Scrubber";
+import { TAB_BAR_CLEARANCE } from "./TabBar";
+import { api } from "../lib/api";
+import { theme } from "../lib/theme";
+import type { DiscoverResponse, DiscoverTrack } from "../lib/types";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 
-export default function Discover() {
+/** Genre groups the route serves; a refresh moves to a different one. */
+const PAGES = 5;
+
+export function DiscoverFeed({
+  refreshKey = 0,
+  isActive = true,
+}: {
+  refreshKey?: number;
+  /** False while the pager has swiped to another tab. */
+  isActive?: boolean;
+}) {
+  const listRef = useRef<FlatList<DiscoverTrack>>(null);
+  const pageRef = useRef(0);
   const [tracks, setTracks] = useState<DiscoverTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,16 +57,24 @@ export default function Discover() {
   }, []);
 
   useEffect(() => {
-    api<DiscoverResponse>("/api/discover")
+    // Each refresh asks for a different genre group, so you get a genuinely
+    // new set rather than the same chart reshuffled.
+    if (refreshKey > 0) {
+      pageRef.current = (pageRef.current + 1 + Math.floor(Math.random() * (PAGES - 1))) % PAGES;
+    }
+    setLoading(true);
+    api<DiscoverResponse>(`/api/discover?page=${pageRef.current}`)
       .then((data) => {
         setTracks((data.tracks ?? []).filter((t) => t.previewUrl));
+        setActiveIndex(0);
+        listRef.current?.scrollToOffset({ offset: 0, animated: false });
         setError(null);
       })
       .catch((e) =>
         setError(e instanceof Error ? e.message : "Could not load Discover.")
       )
       .finally(() => setLoading(false));
-  }, []);
+  }, [refreshKey]);
 
   const active = tracks[activeIndex];
 
@@ -75,6 +102,15 @@ export default function Discover() {
     }
   ).current;
 
+  // Silence it the moment the pager moves away; resume when it comes back.
+  useEffect(() => {
+    if (!isActive) {
+      player.pause();
+    } else if (tracks.length > 0) {
+      player.play();
+    }
+  }, [isActive, player, tracks.length]);
+
   const toggle = useCallback(() => {
     if (status.playing) player.pause();
     else player.play();
@@ -98,6 +134,7 @@ export default function Discover() {
 
   return (
     <FlatList
+      ref={listRef}
       style={styles.list}
       data={tracks}
       keyExtractor={(t) => t.trackId}
@@ -118,9 +155,9 @@ export default function Discover() {
           track={item}
           isActive={index === activeIndex}
           isPlaying={status.playing}
-          progress={
-            status.duration > 0 ? status.currentTime / status.duration : 0
-          }
+          progress={status.duration > 0 ? status.currentTime / status.duration : 0}
+          duration={status.duration}
+          player={player}
           onToggle={toggle}
         />
       )}
@@ -133,12 +170,16 @@ function Card({
   isActive,
   isPlaying,
   progress,
+  duration,
+  player,
   onToggle,
 }: {
   track: DiscoverTrack;
   isActive: boolean;
   isPlaying: boolean;
   progress: number;
+  duration: number;
+  player: AudioPlayer;
   onToggle: () => void;
 }) {
   const insets = useSafeAreaInsets();
@@ -160,7 +201,7 @@ function Card({
         </View>
       ) : null}
 
-      <View style={[styles.meta, { paddingBottom: insets.bottom + 28 }]}>
+      <View style={[styles.meta, { paddingBottom: TAB_BAR_CLEARANCE }]}>
         <Text style={styles.track} numberOfLines={2}>
           {track.name}
         </Text>
@@ -171,14 +212,7 @@ function Card({
           {track.explicit ? <Text style={styles.explicit}>E</Text> : null}
         </View>
 
-        <View style={styles.progressTrack}>
-          <View
-            style={[
-              styles.progressFill,
-              { width: `${Math.min(100, Math.max(0, progress * 100))}%` },
-            ]}
-          />
-        </View>
+        <Scrubber player={player} progress={progress} duration={duration} />
       </View>
     </Pressable>
   );
@@ -243,11 +277,4 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
     overflow: "hidden",
   },
-  progressTrack: {
-    height: 2,
-    backgroundColor: "rgba(255,255,255,0.25)",
-    borderRadius: 1,
-    marginTop: 6,
-  },
-  progressFill: { height: 2, backgroundColor: theme.accent, borderRadius: 1 },
 });

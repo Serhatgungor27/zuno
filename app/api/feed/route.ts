@@ -62,6 +62,128 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, items });
   }
 
+  // Following feed — vibes and reposts from the people you follow, merged and
+  // ordered by when they happened. Reposts live on profiles.id while follows
+  // key on spotify_id, so this leans on users.auth_user_id to bridge them.
+  if (type === "following_feed") {
+    const viewerId = await resolveViewerId(req);
+    if (!viewerId) return NextResponse.json({ ok: true, items: [] });
+
+    const { data: followRows } = await supabase
+      .from("follows")
+      .select("following_id")
+      .eq("follower_id", viewerId);
+
+    const followedIds = (followRows ?? []).map((f) => f.following_id as string);
+    if (followedIds.length === 0) return NextResponse.json({ ok: true, items: [] });
+
+    const { data: followedUsers } = await supabase
+      .from("users")
+      .select("spotify_id, display_name, image, username, auth_user_id, ghost_mode")
+      .in("spotify_id", followedIds)
+      .eq("ghost_mode", false);
+
+    const bySpotifyId = new Map(
+      (followedUsers ?? []).map((u) => [u.spotify_id as string, u])
+    );
+    const byAuthId = new Map(
+      (followedUsers ?? [])
+        .filter((u) => u.auth_user_id)
+        .map((u) => [u.auth_user_id as string, u])
+    );
+
+    const visibleIds = [...bySpotifyId.keys()];
+    if (visibleIds.length === 0) return NextResponse.json({ ok: true, items: [] });
+
+    const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [{ data: plays }, { data: reposts }] = await Promise.all([
+      supabase
+        .from("listening_history")
+        .select("id, track_id, track_name, artist, album_image, track_url, played_at, user_spotify_id")
+        .in("user_spotify_id", visibleIds)
+        .gte("played_at", since)
+        .order("played_at", { ascending: false })
+        .limit(60),
+      byAuthId.size > 0
+        ? supabase
+            .from("reposts")
+            .select("id, user_id, history_id, track_name, artist, album_image, track_url, created_at")
+            .in("user_id", [...byAuthId.keys()])
+            .gte("created_at", since)
+            .order("created_at", { ascending: false })
+            .limit(40)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    ]);
+
+    type Item = {
+      id: string;
+      kind: "vibe" | "repost";
+      trackId: string | null;
+      track: string;
+      artist: string;
+      albumImage: string | null;
+      trackUrl: string | null;
+      at: string;
+      userName: string;
+      userImage: string | null;
+      userHandle: string;
+    };
+
+    const items: Item[] = [];
+
+    for (const p of plays ?? []) {
+      const u = bySpotifyId.get(p.user_spotify_id as string);
+      if (!u) continue;
+      items.push({
+        id: `vibe:${p.id}`,
+        kind: "vibe",
+        trackId: p.track_id as string,
+        track: p.track_name as string,
+        artist: p.artist as string,
+        albumImage: p.album_image as string | null,
+        trackUrl: p.track_url as string | null,
+        at: p.played_at as string,
+        userName: (u.display_name as string | null) ?? "Unknown",
+        userImage: u.image as string | null,
+        userHandle: (u.username as string | null) ?? (u.spotify_id as string),
+      });
+    }
+
+    for (const r of reposts ?? []) {
+      const u = byAuthId.get(r.user_id as string);
+      if (!u) continue;
+      items.push({
+        id: `repost:${r.id}`,
+        kind: "repost",
+        trackId: (r.history_id as string) ?? null,
+        track: r.track_name as string,
+        artist: r.artist as string,
+        albumImage: r.album_image as string | null,
+        trackUrl: r.track_url as string | null,
+        at: r.created_at as string,
+        userName: (u.display_name as string | null) ?? "Unknown",
+        userImage: u.image as string | null,
+        userHandle: (u.username as string | null) ?? (u.spotify_id as string),
+      });
+    }
+
+    // One row per person per track — someone replaying a song all evening
+    // should not fill the feed.
+    const seen = new Set<string>();
+    const merged = items
+      .sort((a, b) => (a.at < b.at ? 1 : -1))
+      .filter((i) => {
+        const key = `${i.userHandle}:${i.track}:${i.artist}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, 60);
+
+    return NextResponse.json({ ok: true, items: merged });
+  }
+
   // Trending songs — most played in last 24 hours
   if (type === "trending") {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();

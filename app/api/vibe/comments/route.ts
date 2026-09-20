@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
-import { cookies } from "next/headers";
 import { resolveViewerId } from "@/lib/identity";
 
 export const runtime = "nodejs";
@@ -11,7 +10,6 @@ export async function GET(req: Request) {
   const historyId = url.searchParams.get("historyId");
   if (!historyId) return NextResponse.json({ ok: false });
 
-  const cookieStore = await cookies();
   const userId = await resolveViewerId(req);
 
   const { data: comments, count } = await supabase
@@ -54,7 +52,6 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const cookieStore = await cookies();
   const userId = await resolveViewerId(req);
   if (!userId) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
 

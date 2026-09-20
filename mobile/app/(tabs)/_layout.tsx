@@ -5,7 +5,7 @@ import { TabBar } from "../../components/TabBar";
 import { useAuth } from "../../lib/auth";
 import { theme } from "../../lib/theme";
 
-const TABS = ["feed", "discover", "search", "notifications", "profile"];
+const TABS = ["feed", "search", "notifications", "profile"];
 
 export default function TabsLayout() {
   const { session, loading } = useAuth();

@@ -31,7 +31,7 @@ const ICONS: Record<string, (p: IconProps) => React.ReactElement> = {
   profile: ProfileIcon,
 };
 
-const ORDER = ["feed", "discover", "search", "notifications", "profile"] as const;
+const ORDER = ["feed", "search", "notifications", "profile"] as const;
 
 export function TabBar() {
   const insets = useSafeAreaInsets();
