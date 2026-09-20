@@ -79,16 +79,27 @@ export function clearDiscoverCache() {
  * Analytics for what a card actually got: a like, a hand-off to Spotify, a
  * share. Fire-and-forget — nothing the reader does should wait on it.
  */
-function logInteraction(action: string, track: DiscoverTrack) {
+function logInteraction(
+  action: string,
+  track: DiscoverTrack,
+  extra: { sessionId?: string; timeSpentMs?: number; completion?: number | null } = {}
+) {
   void api("/api/discover/interact", {
     method: "POST",
     body: JSON.stringify({
       trackId: track.trackId,
       artist: track.artist,
       action,
+      ...extra,
     }),
   }).catch(() => {});
 }
+
+/** Below this much played, and gone quickly, counts as a rejection. */
+const SKIMMED = 0.15;
+const SKIP_MS = 4000;
+/** Fast skips of one artist in a session before the feed stops offering them. */
+const SKIPS_BEFORE_DROP = 2;
 
 export function DiscoverFeed({
   refreshKey = 0,
@@ -129,6 +140,20 @@ export function DiscoverFeed({
   const [activeIndex, setActiveIndex] = useState(0);
   // A scrub must not also scroll the cards underneath it.
   const [scrubbing, setScrubbing] = useState(false);
+
+  // Every swipe is a measurement: how long the card held you and how much of
+  // it played. Hearts are rare, this happens on every card, and it is the
+  // signal the feed actually learns from.
+  const sessionIdRef = useRef(Math.random().toString(36).slice(2));
+  const watchingRef = useRef<{ track: DiscoverTrack; since: number } | null>(null);
+  const skipsRef = useRef(new Map<string, number>());
+  // Lets the focus effect reach the current closeOut without re-subscribing.
+  const closeOutRef = useRef<() => void>(() => {});
+  // Read through refs so callbacks keep one identity for the life of the feed.
+  // They are handed to every card, and a new function each render would
+  // re-render all of them on every swipe.
+  const videoUrlRef = useRef<string | null>(null);
+  const videoPlayerRef = useRef<VideoPlayer | null>(null);
   // The active card's music video, if Apple has one. Declared before the
   // players because the video player is built from it.
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -162,6 +187,9 @@ export function DiscoverFeed({
   useEventListener(video, "playingChange", ({ isPlaying }) => {
     console.log("[zuno/video] playingChange:", isPlaying, "status:", video.status);
   });
+
+  videoUrlRef.current = videoUrl;
+  videoPlayerRef.current = video;
 
   useEffect(() => {
     let alive = true;
@@ -215,7 +243,12 @@ export function DiscoverFeed({
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
-      return () => setFocused(false);
+      return () => {
+        setFocused(false);
+        // Leaving the screen ends the watch; without this the last card of
+        // every visit goes unrecorded.
+        closeOutRef.current();
+      };
     }, [])
   );
 
@@ -262,6 +295,63 @@ export function DiscoverFeed({
   }, [refreshKey, prefs]);
 
   const active = tracks[activeIndex];
+
+  /**
+   * Closes the book on the card being left: how long it held them and how
+   * much of it played.
+   *
+   * Declared before the effects that re-point the players, so it still reads
+   * the position of the track that was actually playing. `videoUrlRef` is
+   * likewise still the leaving card's, because the lookup for the new one
+   * runs later.
+   */
+  const closeOut = useCallback(() => {
+    const watching = watchingRef.current;
+    if (!watching) return;
+    watchingRef.current = null;
+
+    const dwellMs = Date.now() - watching.since;
+    // Under a second is a scroll passing through, not a listen.
+    if (dwellMs < 400) return;
+
+    const source = videoUrlRef.current ? videoPlayerRef.current : player;
+    const duration = source?.duration ?? 0;
+    const position = source?.currentTime ?? 0;
+    const completion =
+      duration > 0 ? Math.min(1, Math.max(0, position / duration)) : null;
+
+    logInteraction("view", watching.track, {
+      sessionId: sessionIdRef.current,
+      timeSpentMs: dwellMs,
+      completion,
+    });
+
+    // React inside the session too. Being shown an artist again right after
+    // skipping past them twice is the thing that makes a feed feel deaf.
+    const skimmed = (completion ?? 0) <= SKIMMED && dwellMs < SKIP_MS;
+    if (!skimmed) return;
+
+    const artist = watching.track.artist;
+    const count = (skipsRef.current.get(artist) ?? 0) + 1;
+    skipsRef.current.set(artist, count);
+    if (count >= SKIPS_BEFORE_DROP) {
+      setTracks((prev) =>
+        // Never pull the card underneath them — that shifts everything.
+        prev.filter((t) => t.artist !== artist || t.trackId === active?.trackId)
+      );
+    }
+  }, [player, active?.trackId]);
+
+  closeOutRef.current = closeOut;
+
+  // Card changed: close out the last one and start the clock on this one.
+  useEffect(() => {
+    closeOut();
+    if (active) watchingRef.current = { track: active, since: Date.now() };
+    // closeOut is intentionally omitted: it changes with the active track, and
+    // depending on it would close the book on the card as it opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.trackId]);
 
   // Swap the source when the visible card changes, and start it immediately —
   // a feed that waits for a tap before making sound isn't a feed.
@@ -360,21 +450,13 @@ export function DiscoverFeed({
     player.play();
   }, [isActive, focused, player, video, videoUrl, tracks.length]);
 
-  // Read through refs so this callback keeps one identity for the life of the
-  // feed. It is handed to every card, and a new function each render would
-  // re-render all of them on every swipe.
-  const videoUrlRef = useRef<string | null>(null);
-  videoUrlRef.current = videoUrl;
-  const videoPlayerRef = useRef(video);
-  videoPlayerRef.current = video;
-
   // Read the state off the players rather than holding it here — that is the
   // whole point of not subscribing at this level.
   const toggle = useCallback(() => {
     // Pause both regardless of which one is supposed to be playing: if they
     // ever disagree, a tap on pause should still produce silence.
     const v = videoPlayerRef.current;
-    if (videoUrlRef.current) {
+    if (videoUrlRef.current && v) {
       if (v.playing) {
         v.pause();
         player.pause();

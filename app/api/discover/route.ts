@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getApiAuth } from "@/lib/apiAuth";
+import { artistAffinity, type Row as AffinityRow } from "@/lib/affinity";
 
 export const runtime = "nodejs";
 
@@ -54,6 +56,12 @@ const GENRE_GROUPS = [
 
 /** Seeds are the artists we know they like; more means a wider feed. */
 const MAX_SEEDS = 4;
+/**
+ * Share of the feed kept for music outside the listener's established taste.
+ * A feed built purely on what someone already likes converges and goes stale,
+ * and it can never surface an interest they have not expressed yet.
+ */
+const EXPLORE_SHARE = 0.15;
 /** Neighbouring artists pulled in total, shared evenly across the seeds. */
 const MAX_RELATED = 16;
 const TOP_PER_ARTIST = 8;
@@ -231,7 +239,56 @@ export async function GET(req: Request) {
   // catalogue, which is how Discover ended up replaying someone's favourites
   // back at them. The seeds are only a starting point in Deezer's
   // related-artist graph.
-  const seeds = clientArtists.slice(0, MAX_SEEDS);
+  // What the listener actually did outranks what the client guessed. The app
+  // still sends artists so an unauthenticated or offline request degrades to
+  // the old behaviour rather than to nothing.
+  let seedPool = clientArtists;
+  let blockedFromAffinity: string[] = [];
+
+  const auth = await getApiAuth(req).catch(() => null);
+  if (auth) {
+    try {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("favorite_artists")
+        .eq("id", auth.user.id)
+        .maybeSingle();
+
+      const [interactions, likes, dislikes] = await Promise.all([
+        supabase
+          .from("discover_interactions")
+          .select("artist, action, completion, time_spent_ms, created_at")
+          .eq("user_id", auth.user.id)
+          .order("created_at", { ascending: false })
+          .limit(1000),
+        supabase
+          .from("discover_likes")
+          .select("artist, created_at")
+          .eq("user_id", auth.user.id)
+          .limit(300),
+        supabase
+          .from("discover_dislikes")
+          .select("artist")
+          .eq("user_id", auth.user.id)
+          .limit(500),
+      ]);
+
+      const affinity = artistAffinity({
+        interactions: (interactions.data ?? []) as AffinityRow[],
+        likes: (likes.data ?? []) as { artist: string | null; created_at: string }[],
+        dislikes: (dislikes.data ?? []) as { artist: string | null }[],
+        stated: (profile?.favorite_artists as string[] | null) ?? [],
+      });
+      if (affinity.artists.length) seedPool = affinity.artists;
+      blockedFromAffinity = affinity.blocked;
+    } catch {
+      // Scoring is an improvement, not a dependency — fall back to the client.
+    }
+  }
+
+  for (const name of blockedFromAffinity) excludedArtists.add(normaliseArtist(name));
+
+  const seeds = seedPool.slice(0, MAX_SEEDS);
   let relatedTracks: DeezerTrack[] = [];
   const seedNames = new Set(seeds.map(normaliseArtist));
 
@@ -346,12 +403,14 @@ export async function GET(req: Request) {
     dedupe([...tracks0, ...tracks1, ...tracks2, ...searchTracks], seen)
   );
 
-  // Heavily weighted towards what the listener's taste points at. An earlier
-  // 70/30 split still left a Turkish-rap feed carrying Taylor Swift and The
-  // Clash, which is not what someone means by "music like this". A tenth is
-  // enough to keep the feed from sealing shut.
+  // Weighted hard towards taste, with a stated slice held back for things
+  // outside it. An earlier 70/30 split left a Turkish-rap feed carrying
+  // Taylor Swift, which is not what someone means by "music like this" — but
+  // zero exploration is worse, because the feed can then only ever return
+  // what it already knows.
   const TARGET = 60;
-  const tasteShare = fromTaste.length > 0 ? Math.round(TARGET * 0.9) : 0;
+  const tasteShare =
+    fromTaste.length > 0 ? Math.round(TARGET * (1 - EXPLORE_SHARE)) : 0;
   const all = shuffle([
     ...fromTaste.slice(0, tasteShare),
     ...fromCharts.slice(0, TARGET - Math.min(tasteShare, fromTaste.length)),
