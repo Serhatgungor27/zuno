@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     // accepted rather than dropped.
     const auth = await getApiAuth(req).catch(() => null);
 
-    await supabase.from("discover_interactions").insert({
+    const { error } = await supabase.from("discover_interactions").insert({
       user_id: auth?.user.id ?? null,
       session_id: sessionId ?? null,
       track_id: trackId,
@@ -33,6 +33,14 @@ export async function POST(req: Request) {
       time_spent_ms: timeSpentMs ?? 0,
       completion: typeof completion === "number" ? completion : null,
     });
+
+    // A write that silently fails looks exactly like one that worked, and the
+    // whole feed now learns from these rows — a missing column or a missing
+    // grant would quietly stop it learning at all.
+    if (error) {
+      console.error("[discover/interact] write:", error);
+      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch {
