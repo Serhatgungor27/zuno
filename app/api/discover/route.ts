@@ -52,6 +52,12 @@ const GENRE_GROUPS = [
   [0, 165, 106],   // page 4: Global, R&B, Electro
 ];
 
+/** Seeds are the artists we know they like; more means a wider feed. */
+const MAX_SEEDS = 4;
+/** Neighbouring artists pulled in total, shared evenly across the seeds. */
+const MAX_RELATED = 16;
+const TOP_PER_ARTIST = 8;
+
 // Fallback search queries per page for variety
 const SEARCH_QUERIES = [
   "top hits 2025",
@@ -78,11 +84,26 @@ async function getDeezerChartTracks(genreId: number, limit = 50): Promise<Deezer
 type DeezerArtist = { id: number; name: string; nb_fan?: number };
 
 /**
+ * Deezer answers roughly twenty calls for a single Discover request, and it
+ * rate limits — enough parallel requests and every lookup fails at once,
+ * which returns an empty feed rather than a degraded one. Who an artist is
+ * and who they sound like barely changes, so both are held for the life of
+ * the instance; their top tracks are held for half an hour.
+ */
+const artistIdCache = new Map<string, DeezerArtist | null>();
+const relatedCache = new Map<number, DeezerArtist[]>();
+const topCache = new Map<number, { at: number; tracks: DeezerTrack[] }>();
+const TOP_TTL_MS = 30 * 60 * 1000;
+
+/**
  * Resolve an artist name to a Deezer id, taking the one with the most fans
  * rather than the first hit — plenty of names are shared, and the top search
  * result is not reliably the artist anyone means.
  */
 async function deezerArtistId(name: string): Promise<DeezerArtist | null> {
+  const key = name.toLowerCase().trim();
+  const hit = artistIdCache.get(key);
+  if (hit !== undefined) return hit;
   try {
     const res = await fetch(
       `https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=5`,
@@ -91,9 +112,10 @@ async function deezerArtistId(name: string): Promise<DeezerArtist | null> {
     if (!res.ok) return null;
     const data = await res.json();
     const list: DeezerArtist[] = data.data ?? [];
-    return (
-      list.slice().sort((a, b) => (b.nb_fan ?? 0) - (a.nb_fan ?? 0))[0] ?? null
-    );
+    const best =
+      list.slice().sort((a, b) => (b.nb_fan ?? 0) - (a.nb_fan ?? 0))[0] ?? null;
+    artistIdCache.set(key, best);
+    return best;
   } catch {
     return null;
   }
@@ -107,20 +129,26 @@ async function deezerArtistId(name: string): Promise<DeezerArtist | null> {
  * model either.
  */
 async function relatedArtists(artistId: number): Promise<DeezerArtist[]> {
+  const hit = relatedCache.get(artistId);
+  if (hit) return hit;
   try {
     const res = await fetch(
-      `https://api.deezer.com/artist/${artistId}/related?limit=12`,
+      `https://api.deezer.com/artist/${artistId}/related?limit=20`,
       { cache: "no-store" }
     );
     if (!res.ok) return [];
     const data = await res.json();
-    return data.data ?? [];
+    const list: DeezerArtist[] = data.data ?? [];
+    if (list.length) relatedCache.set(artistId, list);
+    return list;
   } catch {
     return [];
   }
 }
 
 async function artistTopTracks(artistId: number, limit = 8): Promise<DeezerTrack[]> {
+  const hit = topCache.get(artistId);
+  if (hit && Date.now() - hit.at < TOP_TTL_MS) return hit.tracks;
   try {
     const res = await fetch(
       `https://api.deezer.com/artist/${artistId}/top?limit=${limit}`,
@@ -128,7 +156,9 @@ async function artistTopTracks(artistId: number, limit = 8): Promise<DeezerTrack
     );
     if (!res.ok) return [];
     const data = await res.json();
-    return data.data ?? [];
+    const tracks: DeezerTrack[] = data.data ?? [];
+    if (tracks.length) topCache.set(artistId, { at: Date.now(), tracks });
+    return tracks;
   } catch {
     return [];
   }
@@ -201,7 +231,7 @@ export async function GET(req: Request) {
   // catalogue, which is how Discover ended up replaying someone's favourites
   // back at them. The seeds are only a starting point in Deezer's
   // related-artist graph.
-  const seeds = clientArtists.slice(0, 2);
+  const seeds = clientArtists.slice(0, MAX_SEEDS);
   let relatedTracks: DeezerTrack[] = [];
   const seedNames = new Set(seeds.map(normaliseArtist));
 
@@ -210,24 +240,37 @@ export async function GET(req: Request) {
       (a): a is DeezerArtist => !!a
     );
 
-    const neighbours = (
-      await Promise.all(resolved.map((a) => relatedArtists(a.id)))
-    ).flat();
+    const neighboursPerSeed = await Promise.all(
+      resolved.map((a) => relatedArtists(a.id))
+    );
 
-    // One entry per artist, minus the seeds themselves and anything turned
-    // down. Ten is as many as Deezer will answer for comfortably in one go.
+    // Take one neighbour from each seed in turn.
+    //
+    // This used to flatten every seed's neighbours into one list and take the
+    // first twelve, which meant the first seed filled every slot and the rest
+    // were silently discarded — three favourite Turkish artists could produce
+    // a feed with no Turkish music in it, purely because of ordering. Going
+    // round-robin guarantees each seed is represented.
     const picked: DeezerArtist[] = [];
     const takenIds = new Set<number>(resolved.map((a) => a.id));
-    for (const artist of neighbours) {
-      const key = normaliseArtist(artist.name);
-      if (takenIds.has(artist.id) || seedNames.has(key) || excludedArtists.has(key)) continue;
-      takenIds.add(artist.id);
-      picked.push(artist);
-      if (picked.length >= 12) break;
+    const deepest = Math.max(0, ...neighboursPerSeed.map((n) => n.length));
+
+    outer: for (let depth = 0; depth < deepest; depth++) {
+      for (const neighbours of neighboursPerSeed) {
+        const artist = neighbours[depth];
+        if (!artist) continue;
+        const key = normaliseArtist(artist.name);
+        if (takenIds.has(artist.id) || seedNames.has(key) || excludedArtists.has(key)) {
+          continue;
+        }
+        takenIds.add(artist.id);
+        picked.push(artist);
+        if (picked.length >= MAX_RELATED) break outer;
+      }
     }
 
     relatedTracks = (
-      await Promise.all(picked.map((a) => artistTopTracks(a.id, 10)))
+      await Promise.all(picked.map((a) => artistTopTracks(a.id, TOP_PER_ARTIST)))
     ).flat();
   }
 

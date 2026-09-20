@@ -188,12 +188,22 @@ export function DiscoverFeed({
       likedRef.current = ids;
       setLikedIds(ids);
 
-      // An artist you actually hearted is a stronger signal than one you typed
-      // into settings once, so those come first.
+      // Interleaved, not concatenated. Putting hearted artists first and
+      // truncating meant a few likes while browsing pushed out every artist
+      // the listener had actually chosen in their profile — three favourite
+      // Turkish artists could go entirely unrepresented. Taking them in turn
+      // keeps both signals alive.
       const likedArtists = [...new Set(liked.map((t) => t.artist).filter(Boolean))];
+      const favourites = taste?.favorite_artists ?? [];
+      const seeds: string[] = [];
+      for (let i = 0; i < Math.max(favourites.length, likedArtists.length); i++) {
+        if (favourites[i]) seeds.push(favourites[i]);
+        if (likedArtists[i]) seeds.push(likedArtists[i]);
+      }
+
       setPrefs({
         genres: taste?.music_genres ?? [],
-        artists: [...likedArtists, ...(taste?.favorite_artists ?? [])].slice(0, 3),
+        artists: [...new Set(seeds)].slice(0, 4),
         excludeArtists: dislikes?.artists ?? [],
       });
     });
