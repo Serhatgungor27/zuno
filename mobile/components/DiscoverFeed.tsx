@@ -571,18 +571,25 @@ const Card = memo(function Card({
   return (
     <Pressable onPress={onToggle} style={[styles.card, { height: cardH }]}>
       {track.albumImage ? (
-        <Image
-          source={{ uri: track.albumImage }}
-          style={styles.art}
-          // Behind a letterboxed video the cover is a backdrop rather than the
-          // subject. Blurring it fills the bars above and below without
-          // competing with the video, and keeps the seam from reading as a
-          // hard edge. Left sharp when the cover IS the card.
-          blurRadius={video ? 30 : 0}
-        />
+        <Image source={{ uri: track.albumImage }} style={styles.art} />
       ) : (
         <View style={[styles.art, styles.artFallback]} />
       )}
+
+      {/* A separate, blurred copy mounted only when a video is over it,
+          rather than toggling blurRadius on the sharp one.
+          iOS applies blurRadius when it decodes the image and caches the
+          result, so a card that renders blurred for even one frame — which
+          happens while the previous card's video state is still current —
+          keeps the blur when the prop goes back to 0. Mounting and unmounting
+          a second Image forces a real decode each way. */}
+      {video && track.albumImage ? (
+        <Image
+          source={{ uri: track.albumImage }}
+          style={styles.art}
+          blurRadius={30}
+        />
+      ) : null}
 
       {/* Under the video, not over it. This darkens the backdrop and keeps
           the title legible on cards with no video — but it was sitting on top
