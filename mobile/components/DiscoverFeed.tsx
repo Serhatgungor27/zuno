@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEvent } from "expo";
+import { useEvent, useEventListener } from "expo";
 import {
   setAudioModeAsync,
   useAudioPlayer,
@@ -151,6 +151,9 @@ export function DiscoverFeed({
   // Swaps are async and a fast scroll starts several. Only the newest may
   // finish — otherwise a stale one resolves last and plays the wrong track.
   const swapRef = useRef(0);
+  // The card whose video is loading. Set when a swap starts, consumed when the
+  // player reports it can actually play.
+  const pendingRef = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -299,21 +302,44 @@ export function DiscoverFeed({
     // Hide the video while the swap happens. Playback is not touched here —
     // the effect above owns that, and two places starting players was the bug.
     setVideoFor(null);
+    pendingRef.current = trackId;
 
+    // replaceAsync resolves when the source is SET, not when it can play.
+    // Playing on that promise called play() on a still-loading player, which
+    // does nothing — so the card went quiet until it was tapped. The
+    // statusChange listener below is what decides the video is ready.
     video.replaceAsync(videoUrl).then(
       () => {
-        // A newer card has already claimed the player — leave it alone.
+        // If the player is already playable the status may never change, and
+        // then no statusChange event arrives to promote it. Check directly.
         if (swapRef.current !== turn) return;
-        setVideoFor(trackId);
+        if (video.status === "readyToPlay" && pendingRef.current === trackId) {
+          pendingRef.current = null;
+          setVideoFor(trackId);
+        }
       },
       () => {
         if (swapRef.current !== turn) return;
-        // The video failed to load — fall back to the audio preview.
+        pendingRef.current = null;
         setVideoUrl(null);
         setVideoFor(null);
       }
     );
   }, [videoUrl, active?.trackId, video]);
+
+  useEventListener(video, "statusChange", ({ status }) => {
+    if (status === "readyToPlay") {
+      const pending = pendingRef.current;
+      if (pending) {
+        pendingRef.current = null;
+        setVideoFor(pending);
+      }
+    } else if (status === "error") {
+      pendingRef.current = null;
+      setVideoUrl(null);
+      setVideoFor(null);
+    }
+  });
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(
@@ -351,11 +377,21 @@ export function DiscoverFeed({
     if (videoFor) {
       quiet(player);
       video.play();
-    } else {
-      quiet(video);
-      player.play();
+      return;
     }
-  }, [isActive, focused, player, video, videoFor, tracks.length]);
+
+    quiet(video);
+
+    // A video is loading for this card. Starting the preview now means the
+    // song plays, then restarts a second later when the video takes over —
+    // which is worse than a moment of quiet over the cover art.
+    if (videoUrl) {
+      quiet(player);
+      return;
+    }
+
+    player.play();
+  }, [isActive, focused, player, video, videoFor, videoUrl, tracks.length]);
 
   // Read the state off the players rather than holding it here — that is the
   // whole point of not subscribing at this level.
