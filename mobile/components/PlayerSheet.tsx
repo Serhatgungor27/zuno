@@ -486,9 +486,11 @@ const styles = StyleSheet.create({
     textShadowRadius: 8,
   },
   artist: { color: "rgba(255,255,255,0.7)", fontSize: 15 },
-  // Sits above the scrubber and the hand-off buttons. It used to sit level
-  // with them and rely on the block's right padding to stay clear.
-  rail: { position: "absolute", right: 12, bottom: 200, gap: 14, alignItems: "center" },
+  // Just above the scrubber, which now runs the full width. Measured rather
+  // than guessed: the buttons take 52-92 from the bottom and the scrubber
+  // 102-124, so 132 clears it with a little air and keeps the rail attached
+  // to the content instead of floating high up the sheet.
+  rail: { position: "absolute", right: 12, bottom: 132, gap: 14, alignItems: "center" },
   railButton: {
     width: 44,
     height: 44,
