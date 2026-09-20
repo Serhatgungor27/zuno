@@ -874,6 +874,15 @@ function OpenIn({ track }: { track: DiscoverTrack }) {
     Linking.openURL(url).catch(() => {});
   };
 
+  const openApple = () => {
+    logInteraction("open_apple", track);
+    // Discover's tracks come from Deezer, so there is never a real Apple link
+    // for them — search is the honest hand-off.
+    Linking.openURL(
+      `https://music.apple.com/search?term=${encodeURIComponent(`${track.name} ${track.artist}`.trim())}`
+    ).catch(() => {});
+  };
+
   const openYouTube = async () => {
     logInteraction("open_youtube", track);
     setFindingVideo(true);
@@ -900,6 +909,14 @@ function OpenIn({ track }: { track: DiscoverTrack }) {
       </Pressable>
 
       <Pressable
+        onPress={openApple}
+        style={({ pressed }) => [styles.pill, styles.apple, pressed && styles.pressed]}
+      >
+        <FontAwesome name="apple" size={16} color="#fff" />
+        <Text style={styles.pillLabel}>Apple Music</Text>
+      </Pressable>
+
+      <Pressable
         onPress={() => void openYouTube()}
         disabled={findingVideo}
         style={({ pressed }) => [styles.pill, styles.youtube, pressed && styles.pressed]}
@@ -909,7 +926,7 @@ function OpenIn({ track }: { track: DiscoverTrack }) {
         ) : (
           <Ionicons name="logo-youtube" size={15} color="#fff" />
         )}
-        <Text style={styles.pillLabel}>Full video</Text>
+        <Text style={styles.pillLabel}>Video</Text>
       </Pressable>
     </View>
   );
@@ -970,7 +987,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.1)",
   },
-  openIn: { flexDirection: "row", gap: 8, paddingTop: 2, paddingRight: 62 },
+  openIn: { flexDirection: "row", gap: 8, paddingTop: 2 },
   pill: {
     flexDirection: "row",
     alignItems: "center",
@@ -980,6 +997,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   spotify: { backgroundColor: "#1db954" },
+  apple: { backgroundColor: "#fa243c" },
   youtube: { backgroundColor: "rgba(255,255,255,0.16)" },
   pillLabel: { color: "#fff", fontSize: 13, fontWeight: "600" },
   track: {

@@ -198,6 +198,7 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
       url?: string | null;
       /** A real Spotify link, or null when the source has none. */
       spotifyUrl?: string | null;
+      appleUrl?: string | null;
       preview?: string | null;
     }) => {
       setNowPlaying({
@@ -206,6 +207,7 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
         image: item.image,
         url: null,
         spotifyUrl: item.spotifyUrl ?? null,
+        appleUrl: item.appleUrl ?? null,
         historyId: item.trackId,
       });
       try {
@@ -257,6 +259,7 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
           url: f.trackUrl,
           // Vibes and reposts carry the real Spotify link they were played from.
           spotifyUrl: f.trackUrl,
+          appleUrl: null as string | null,
           openUrl: null as string | null,
           // Says who, and whether they played it or reposted it.
           meta: `${f.userName} ${f.kind === "repost" ? "reposted" : "vibed"}`,
@@ -273,6 +276,9 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
           // fall back to a Spotify search for the track, instead of opening
           // Deezer or Apple Music from a button that says Spotify.
           spotifyUrl: null,
+          // A country chart row IS an Apple Music link, so hand it over rather
+          // than making Apple Music search for something we already know.
+          appleUrl: t.source === "apple" ? t.sourceUrl : null,
           meta: `#${t.position}`,
           // Deezer's global chart ships previews; Apple's country charts do
           // not, so those fall back to the lookup.

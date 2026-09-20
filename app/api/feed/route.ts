@@ -245,6 +245,7 @@ export async function GET(req: Request) {
               // a Spotify link, and naming it deezerUrl led the app to open
               // Apple Music from a button labelled Spotify.
               sourceUrl: t.link ?? null,
+              source: "deezer",
               kind: "song",
             })
           ),
@@ -273,6 +274,7 @@ export async function GET(req: Request) {
                 : null,
               previewUrl: null,
               sourceUrl: r.url ?? null,
+              source: "apple",
               kind: kind === "podcasts" ? "podcast" : "song",
             })
           ),

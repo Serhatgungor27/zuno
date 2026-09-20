@@ -208,6 +208,8 @@ export type ChartRow = {
    * treating it as one is what made the Spotify button open Apple Music.
    */
   sourceUrl: string | null;
+  /** Which service sourceUrl points at, so the app never has to guess. */
+  source: "apple" | "deezer";
   kind: "song" | "podcast";
 };
 

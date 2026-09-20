@@ -31,6 +31,8 @@ export type NowPlaying = {
   /** Set when there is no preview to be had. */
   error?: string;
   spotifyUrl?: string | null;
+  /** A real Apple Music link when the row came from an Apple chart. */
+  appleUrl?: string | null;
   /** Identifies the track for likes and reposts. */
   historyId?: string;
 };
@@ -324,6 +326,14 @@ function OpenIn({ track }: { track: NowPlaying }) {
     Linking.openURL(url).catch(() => {});
   };
 
+  const openApple = () => {
+    // A chart row carries its real Apple Music link; anything else searches.
+    const url =
+      track.appleUrl ??
+      `https://music.apple.com/search?term=${encodeURIComponent(`${track.title} ${track.artist}`.trim())}`;
+    Linking.openURL(url).catch(() => {});
+  };
+
   const openYouTube = async () => {
     setFindingVideo(true);
     const params = new URLSearchParams({ track: track.title, artist: track.artist });
@@ -349,6 +359,14 @@ function OpenIn({ track }: { track: NowPlaying }) {
       </Pressable>
 
       <Pressable
+        onPress={openApple}
+        style={({ pressed }) => [styles.pill, styles.apple, pressed && styles.pressed]}
+      >
+        <FontAwesome name="apple" size={17} color="#fff" />
+        <Text style={styles.pillLabel}>Apple Music</Text>
+      </Pressable>
+
+      <Pressable
         onPress={() => void openYouTube()}
         disabled={findingVideo}
         style={({ pressed }) => [styles.pill, styles.youtube, pressed && styles.pressed]}
@@ -358,7 +376,7 @@ function OpenIn({ track }: { track: NowPlaying }) {
         ) : (
           <Ionicons name="logo-youtube" size={16} color="#fff" />
         )}
-        <Text style={styles.pillLabel}>Full video</Text>
+        <Text style={styles.pillLabel}>Video</Text>
       </Pressable>
     </View>
   );
@@ -485,6 +503,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   spotify: { backgroundColor: "#1db954" },
+  apple: { backgroundColor: "#fa243c" },
   youtube: { backgroundColor: "#ff0000" },
   pillLabel: { color: "#fff", fontSize: 15, fontWeight: "700" },
   pressed: { opacity: 0.6 },
