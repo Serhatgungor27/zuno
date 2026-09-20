@@ -15,13 +15,17 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ChartFilters, type ChartKind } from "../../components/ChartFilters";
 import { DiscoverFeed } from "../../components/DiscoverFeed";
+import { Fade } from "../../components/Fade";
 import { PlayerSheet, type NowPlaying } from "../../components/PlayerSheet";
 import { TAB_BAR_CLEARANCE } from "../../components/TabBar";
 import { api } from "../../lib/api";
 import { onTabBarScroll, resetTabBar } from "../../lib/tabBarScroll";
 import { theme } from "../../lib/theme";
-import type { FollowingItem, GlobalTrack } from "../../lib/types";
+import * as Linking from "expo-linking";
+
+import type { ChartRow, FollowingItem } from "../../lib/types";
 
 const WIDTH = Dimensions.get("window").width;
 
@@ -79,6 +83,12 @@ export default function Feed() {
       </ScrollView>
 
       {/* Floats over Discover's artwork, sits above the lists. */}
+      <Fade
+        direction="top"
+        height={insets.top + 96}
+        style={{ top: 0 }}
+      />
+
       <View style={[styles.header, { paddingTop: insets.top + 6 }]} pointerEvents="box-none">
         <Text style={styles.wordmark}>zuno</Text>
         <View style={styles.tabs}>
@@ -116,7 +126,9 @@ export default function Feed() {
 function ListFeed({ tab }: { tab: "following" | "trending" }) {
   const insets = useSafeAreaInsets();
   const [following, setFollowing] = useState<FollowingItem[]>([]);
-  const [trending, setTrending] = useState<GlobalTrack[]>([]);
+  const [trending, setTrending] = useState<ChartRow[]>([]);
+  const [kind, setKind] = useState<ChartKind>("songs");
+  const [country, setCountry] = useState("global");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,14 +142,16 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
         const data = await api<{ items: FollowingItem[] }>("/api/feed?type=following_feed");
         setFollowing(data.items ?? []);
       } else {
-        const data = await api<{ tracks: GlobalTrack[] }>("/api/feed?type=trending_global");
+        const data = await api<{ tracks: ChartRow[] }>(
+          `/api/feed?type=trending_global&kind=${kind}&country=${country}`
+        );
         setTrending(data.tracks ?? []);
       }
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load the feed.");
     }
-  }, [tab]);
+  }, [tab, kind, country]);
 
   useEffect(() => {
     setLoading(true);
@@ -225,8 +239,11 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
           trackId: t.trackId,
           url: t.deezerUrl,
           meta: `#${t.position}`,
-          // The chart ships previews, so these skip the lookup entirely.
+          // Deezer's global chart ships previews; Apple's country charts do
+          // not, so those fall back to the lookup.
           preview: t.previewUrl,
+          // A podcast is not a 30-second preview — it opens where it lives.
+          openUrl: t.kind === "podcast" ? t.deezerUrl : null,
         }));
 
   return (
@@ -237,6 +254,18 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
         keyExtractor={(r) => r.key}
         scrollEventThrottle={16}
         onScroll={onTabBarScroll}
+        ListHeaderComponent={
+          tab === "trending" ? (
+            <ChartFilters
+              kind={kind}
+              country={country}
+              onChange={(next) => {
+                setKind(next.kind);
+                setCountry(next.country);
+              }}
+            />
+          ) : null
+        }
         contentContainerStyle={{
           paddingTop: insets.top + 86,
           paddingBottom: TAB_BAR_CLEARANCE,
@@ -262,7 +291,11 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
         }
         renderItem={({ item }) => (
           <Pressable
-            onPress={() => void play(item)}
+            onPress={() => {
+              const open = (item as { openUrl?: string | null }).openUrl;
+              if (open) Linking.openURL(open).catch(() => {});
+              else void play(item);
+            }}
             style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
           >
             {item.image ? (

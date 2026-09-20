@@ -178,3 +178,31 @@ export type GlobalTrack = {
   previewUrl: string | null;
   deezerUrl: string | null;
 };
+
+/** Rows from GET /api/feed?type=trending_global */
+export type ChartRow = {
+  position: number;
+  trackId: string;
+  name: string;
+  artist: string;
+  albumImage: string | null;
+  previewUrl: string | null;
+  deezerUrl: string | null;
+  kind: "song" | "podcast";
+};
+
+/** Storefronts offered in the Trending filter. Global is songs-only. */
+export const CHART_COUNTRIES: { code: string; label: string }[] = [
+  { code: "global", label: "Global" },
+  { code: "se", label: "Sweden" },
+  { code: "us", label: "United States" },
+  { code: "gb", label: "United Kingdom" },
+  { code: "de", label: "Germany" },
+  { code: "tr", label: "Türkiye" },
+  { code: "fr", label: "France" },
+  { code: "nl", label: "Netherlands" },
+  { code: "es", label: "Spain" },
+  { code: "it", label: "Italy" },
+  { code: "no", label: "Norway" },
+  { code: "dk", label: "Denmark" },
+];

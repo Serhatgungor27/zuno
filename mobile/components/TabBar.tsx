@@ -12,6 +12,7 @@ import {
   SearchIcon,
 } from "./TabIcons";
 import { expandTabBar, tabBarRetract } from "../lib/tabBarScroll";
+import { Fade } from "./Fade";
 import { theme } from "../lib/theme";
 
 /**
@@ -19,6 +20,8 @@ import { theme } from "../lib/theme";
  * clears the floating capsule: the bar itself, the gap it sits in, and a
  * little breathing space. Screens add this to their contentContainer padding.
  */
+const FADE_HEIGHT = 130;
+
 export const TAB_BAR_CLEARANCE = 42 + 24 + 16;
 
 type IconProps = { size?: number; color: string; filled?: boolean };
@@ -64,6 +67,8 @@ export function TabBar() {
       pointerEvents="box-none"
       style={[styles.wrap, { paddingBottom: Math.max(insets.bottom - 15, 10) }]}
     >
+      <Fade direction="bottom" height={FADE_HEIGHT} style={{ bottom: 0 }} />
+
       {/* Real frosted glass, not a flat translucent fill — content moving
           underneath shows through, which is what makes Instagram's blend. */}
       <Animated.View style={{ transform: [{ scale }, { translateY }], opacity }}>
