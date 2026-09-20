@@ -75,6 +75,69 @@ async function getDeezerChartTracks(genreId: number, limit = 50): Promise<Deezer
   }
 }
 
+type DeezerArtist = { id: number; name: string; nb_fan?: number };
+
+/**
+ * Resolve an artist name to a Deezer id, taking the one with the most fans
+ * rather than the first hit — plenty of names are shared, and the top search
+ * result is not reliably the artist anyone means.
+ */
+async function deezerArtistId(name: string): Promise<DeezerArtist | null> {
+  try {
+    const res = await fetch(
+      `https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=5`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const list: DeezerArtist[] = data.data ?? [];
+    return (
+      list.slice().sort((a, b) => (b.nb_fan ?? 0) - (a.nb_fan ?? 0))[0] ?? null
+    );
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The artists Deezer considers similar. This is what turns a taste profile
+ * into discovery: searching a favourite artist by name only ever returns that
+ * same artist, which is the opposite of what Discover is for. Relatedness is
+ * behavioural, so it also keeps to a scene and a language without us having to
+ * model either.
+ */
+async function relatedArtists(artistId: number): Promise<DeezerArtist[]> {
+  try {
+    const res = await fetch(
+      `https://api.deezer.com/artist/${artistId}/related?limit=12`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.data ?? [];
+  } catch {
+    return [];
+  }
+}
+
+async function artistTopTracks(artistId: number, limit = 8): Promise<DeezerTrack[]> {
+  try {
+    const res = await fetch(
+      `https://api.deezer.com/artist/${artistId}/top?limit=${limit}`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.data ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function normaliseArtist(name: string) {
+  return name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+}
+
 async function searchDeezer(query: string, limit = 50): Promise<DeezerTrack[]> {
   try {
     const res = await fetch(
@@ -96,6 +159,16 @@ export async function GET(req: Request) {
   const excludeIdsParam = searchParams.get("excludeIds") ?? "";
   const artistsParam = searchParams.get("artists") ?? "";
   const genresParam = searchParams.get("genres") ?? "";
+  const excludeArtistsParam = searchParams.get("excludeArtists") ?? "";
+
+  // Artists the listener has turned down. Rejecting a song is nearly always a
+  // statement about the artist, so the whole artist is held out.
+  const excludedArtists = new Set(
+    excludeArtistsParam
+      .split(",")
+      .map((a) => normaliseArtist(a))
+      .filter(Boolean)
+  );
 
   // Parse excluded track IDs (already-liked tracks — never show again)
   const excludeIds = new Set(excludeIdsParam ? excludeIdsParam.split(",").filter(Boolean) : []);
@@ -123,16 +196,44 @@ export async function GET(req: Request) {
     genreGroup = GENRE_GROUPS[page];
   }
 
-  // Build personalized search queries:
-  // 1. Use liked artists from client if available
-  // 2. Fall back to session interactions from DB
-  // 3. Fall back to default queries
+  // The seeds are the artists we know the listener already likes. They are
+  // NOT what gets served: searching a seed by name returns that same artist's
+  // catalogue, which is how Discover ended up replaying someone's favourites
+  // back at them. The seeds are only a starting point in Deezer's
+  // related-artist graph.
+  const seeds = clientArtists.slice(0, 2);
+  let relatedTracks: DeezerTrack[] = [];
+  const seedNames = new Set(seeds.map(normaliseArtist));
+
+  if (seeds.length > 0) {
+    const resolved = (await Promise.all(seeds.map(deezerArtistId))).filter(
+      (a): a is DeezerArtist => !!a
+    );
+
+    const neighbours = (
+      await Promise.all(resolved.map((a) => relatedArtists(a.id)))
+    ).flat();
+
+    // One entry per artist, minus the seeds themselves and anything turned
+    // down. Ten is as many as Deezer will answer for comfortably in one go.
+    const picked: DeezerArtist[] = [];
+    const takenIds = new Set<number>(resolved.map((a) => a.id));
+    for (const artist of neighbours) {
+      const key = normaliseArtist(artist.name);
+      if (takenIds.has(artist.id) || seedNames.has(key) || excludedArtists.has(key)) continue;
+      takenIds.add(artist.id);
+      picked.push(artist);
+      if (picked.length >= 10) break;
+    }
+
+    relatedTracks = (
+      await Promise.all(picked.map((a) => artistTopTracks(a.id, 8)))
+    ).flat();
+  }
+
   let searchQueries: string[] = [];
 
-  if (clientArtists.length > 0) {
-    // Use up to 3 liked artists as search queries for personalization
-    searchQueries = clientArtists;
-  } else if (sessionId) {
+  if (seeds.length === 0 && sessionId) {
     try {
       const { data: interactions } = await supabase
         .from("discover_interactions")
@@ -152,10 +253,10 @@ export async function GET(req: Request) {
     } catch { /* silent */ }
   }
 
-  // Fill remaining search slots with default queries
-  const defaultQuery = SEARCH_QUERIES[page % SEARCH_QUERIES.length];
-  if (searchQueries.length === 0) {
-    searchQueries = [defaultQuery];
+  // Only fall back to generic queries when there is nothing personal to go on;
+  // with seeds, the related-artist tracks are the personalised half.
+  if (searchQueries.length === 0 && relatedTracks.length === 0) {
+    searchQueries = [SEARCH_QUERIES[page % SEARCH_QUERIES.length]];
   }
 
   // Fetch all 3 genre charts + personalized searches in parallel
@@ -170,21 +271,47 @@ export async function GET(req: Request) {
   // Flatten search results
   const searchTracks = searchResults.flat();
 
-  // Merge + deduplicate + filter tracks with no preview or cover + exclude liked tracks
-  const seen = new Set<number>();
-  const all: DeezerTrack[] = [];
-  for (const t of [...tracks0, ...tracks1, ...tracks2, ...searchTracks]) {
-    if (!seen.has(t.id) && t.preview && t.album?.cover_xl && !excludeIds.has(String(t.id))) {
+  const usable = (t: DeezerTrack) =>
+    t.preview &&
+    t.album?.cover_xl &&
+    !excludeIds.has(String(t.id)) &&
+    !excludedArtists.has(normaliseArtist(t.artist?.name ?? "")) &&
+    // The seeds' own catalogue is exactly what the listener already knows.
+    !seedNames.has(normaliseArtist(t.artist?.name ?? ""));
+
+  const dedupe = (source: DeezerTrack[], seen: Set<number>) => {
+    const out: DeezerTrack[] = [];
+    for (const t of source) {
+      if (seen.has(t.id) || !usable(t)) continue;
       seen.add(t.id);
-      all.push(t);
+      out.push(t);
     }
-  }
+    return out;
+  };
 
-  // Shuffle for freshness
-  for (let i = all.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [all[i], all[j]] = [all[j], all[i]];
-  }
+  const shuffle = (list: DeezerTrack[]) => {
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    return list;
+  };
 
-  return NextResponse.json({ ok: true, tracks: all.slice(0, 60).map(formatTrack), page });
+  const seen = new Set<number>();
+  const fromTaste = shuffle(dedupe(relatedTracks, seen));
+  const fromCharts = shuffle(
+    dedupe([...tracks0, ...tracks1, ...tracks2, ...searchTracks], seen)
+  );
+
+  // Weighted towards what the listener's taste points at, with charts mixed in
+  // so the feed can still surprise. With no taste on file the charts are all
+  // there is, and slice() just takes everything.
+  const TARGET = 60;
+  const tasteShare = fromTaste.length > 0 ? Math.round(TARGET * 0.7) : 0;
+  const all = shuffle([
+    ...fromTaste.slice(0, tasteShare),
+    ...fromCharts.slice(0, TARGET - Math.min(tasteShare, fromTaste.length)),
+  ]);
+
+  return NextResponse.json({ ok: true, tracks: all.slice(0, TARGET).map(formatTrack), page });
 }

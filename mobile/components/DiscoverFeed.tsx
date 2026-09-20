@@ -1,15 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
-import * as Linking from "expo-linking";
-import { useFocusEffect } from "expo-router";
 import { useEvent } from "expo";
-import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
 import {
   setAudioModeAsync,
   useAudioPlayer,
   useAudioPlayerStatus,
   type AudioPlayer,
 } from "expo-audio";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as Linking from "expo-linking";
+import { useFocusEffect } from "expo-router";
+import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -29,15 +29,25 @@ import { api } from "../lib/api";
 import { theme } from "../lib/theme";
 import type { DiscoverResponse, DiscoverTrack, Taste } from "../lib/types";
 
-const { height: SCREEN_H } = Dimensions.get("window");
+/**
+ * Only a starting guess. The list's real viewport is measured on layout:
+ * paging off the window height is wrong by however much the screen's chrome
+ * takes, and that error accumulates card by card until a swipe snaps back to
+ * one you already passed.
+ */
+const { height: WINDOW_H } = Dimensions.get("window");
 
 /** Genre groups the route serves; a refresh moves to a different one. */
 const PAGES = 5;
 
-type Prefs = { genres: string[]; artists: string[] };
+/** How far ahead to look up music videos, so they're ready on arrival. */
+const PREFETCH = 3;
+
+type Prefs = { genres: string[]; artists: string[]; excludeArtists: string[] };
 type LikedResponse = { tracks: { trackId: string; artist: string }[] };
 type RepostResponse = { reposts: { history_id: string | null }[] };
 type VideoResponse = { videoUrl: string | null };
+type DislikeResponse = { trackIds: string[]; artists: string[] };
 
 /**
  * Music videos, looked up once per track and kept for the session. Roughly
@@ -57,6 +67,11 @@ async function fetchVideo(track: DiscoverTrack): Promise<string | null> {
     videoUrls.set(track.trackId, null);
     return null;
   }
+}
+
+/** Drops every cached lookup — Settings offers this as "Clear cache". */
+export function clearDiscoverCache() {
+  videoUrls.clear();
 }
 
 /**
@@ -85,17 +100,22 @@ export function DiscoverFeed({
   const listRef = useRef<FlatList<DiscoverTrack>>(null);
   const pageRef = useRef(0);
   const [tracks, setTracks] = useState<DiscoverTrack[]>([]);
-  // What the route should personalise on. Null until both taste and likes have
+
+  // The list's measured viewport. Every paging number derives from this.
+  const [cardH, setCardH] = useState(WINDOW_H);
+
+  // What the route should personalise on. Null until taste and likes have
   // answered, so the feed is asked for once rather than loaded generic and
   // then replaced under the reader.
   const [prefs, setPrefs] = useState<Prefs | null>(null);
-  // Mirrored in a ref so liking a track repaints its heart without putting the
-  // liked set in the fetch effect's deps, which would reload the whole feed.
+
+  // Mirrored in refs so tapping a button repaints that button without putting
+  // the sets in the fetch effect's deps, which would reload the whole feed.
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const likedRef = useRef<Set<string>>(new Set());
-  // Reposts are toggled server-side, so without knowing what's already
-  // reposted the button would offer to repost something it would delete.
   const [repostedIds, setRepostedIds] = useState<Set<string>>(new Set());
+  const dislikedRef = useRef<Set<string>>(new Set());
+
   const [loading, setLoading] = useState(true);
   // `isActive` only tracks the pager. Leaving the feed for another tab doesn't
   // unmount this screen, so without watching focus the preview keeps playing
@@ -106,26 +126,22 @@ export function DiscoverFeed({
 
   // One player, re-pointed as the active card changes. Creating a player per
   // card would keep 60 of them alive and fight over the audio session.
+  //
+  // Neither player's status is subscribed to here. Both tick several times a
+  // second, and subscribing at this level re-rendered the whole list mid-swipe
+  // — which is what made scrolling fight back. Only the active card listens.
   const player = useAudioPlayer(null);
-  const status = useAudioPlayerStatus(player);
-
-  // A second player for the music video. When a track has one it carries the
-  // sound as well as the picture, so the audio preview steps aside — a video
-  // of one part of the song under the audio of another looks broken.
   const video = useVideoPlayer(null, (p) => {
     p.loop = true;
   });
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
-
-  // expo-video reports state through events rather than a status hook.
-  const { isPlaying: videoPlaying } = useEvent(video, "playingChange", {
-    isPlaying: video.playing,
-  });
-  // timeUpdate carries currentTime only; duration is a player property that
-  // fills in once the source loads, so it's read directly each render.
-  const timeUpdate = useEvent(video, "timeUpdate");
-  const videoTime = timeUpdate?.currentTime ?? video.currentTime ?? 0;
-  const videoDuration = video.duration ?? 0;
+  // The track whose video is actually loaded in the player right now. The
+  // VideoView is withheld until this matches the card, because the player is
+  // shared: mounting it earlier shows the PREVIOUS card's video for a moment.
+  const [videoFor, setVideoFor] = useState<string | null>(null);
+  // Swaps are async and a fast scroll starts several. Only the newest may
+  // finish — otherwise a stale one resolves last and plays the wrong track.
+  const swapRef = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -133,7 +149,8 @@ export function DiscoverFeed({
       api<Taste>("/api/taste").catch(() => null),
       api<LikedResponse>("/api/discover/like").catch(() => null),
       api<RepostResponse>("/api/repost").catch(() => null),
-    ]).then(([taste, likes, reposts]) => {
+      api<DislikeResponse>("/api/discover/dislike").catch(() => null),
+    ]).then(([taste, likes, reposts, dislikes]) => {
       if (!alive) return;
 
       setRepostedIds(
@@ -143,6 +160,8 @@ export function DiscoverFeed({
             .filter((id): id is string => !!id)
         )
       );
+
+      dislikedRef.current = new Set(dislikes?.trackIds ?? []);
 
       const liked = likes?.tracks ?? [];
       const ids = new Set(liked.map((t) => t.trackId));
@@ -155,6 +174,7 @@ export function DiscoverFeed({
       setPrefs({
         genres: taste?.music_genres ?? [],
         artists: [...likedArtists, ...(taste?.favorite_artists ?? [])].slice(0, 3),
+        excludeArtists: dislikes?.artists ?? [],
       });
     });
     return () => {
@@ -187,9 +207,12 @@ export function DiscoverFeed({
     const params = new URLSearchParams({ page: String(pageRef.current) });
     if (prefs.genres.length) params.set("genres", prefs.genres.join(","));
     if (prefs.artists.length) params.set("artists", prefs.artists.join(","));
-    // Read from the ref, not state: a reload right after liking should drop
+    if (prefs.excludeArtists.length) {
+      params.set("excludeArtists", prefs.excludeArtists.join(","));
+    }
+    // Read from the refs, not state: a reload right after liking should drop
     // what you just liked, but liking alone must not refetch.
-    const exclude = [...likedRef.current].slice(0, 100);
+    const exclude = [...likedRef.current, ...dislikedRef.current].slice(0, 120);
     if (exclude.length) params.set("excludeIds", exclude.join(","));
 
     api<DiscoverResponse>(`/api/discover?${params}`)
@@ -204,13 +227,6 @@ export function DiscoverFeed({
       )
       .finally(() => setLoading(false));
   }, [refreshKey, prefs]);
-
-  // Identity changes only when one of the sets is replaced, so rows re-render
-  // on a like or repost and not on every frame.
-  const rowState = useMemo(
-    () => ({ likedIds, repostedIds }),
-    [likedIds, repostedIds]
-  );
 
   const active = tracks[activeIndex];
 
@@ -230,9 +246,8 @@ export function DiscoverFeed({
     }
   }, [active?.previewUrl, player]);
 
-  // Ask Apple whether this track has a music video. The audio preview is
-  // already playing by now, so a slow answer costs nothing — the video takes
-  // over when and if it arrives.
+  // Look up this card's video, and the next few ahead of time so they're
+  // already answered by the time you swipe onto them.
   useEffect(() => {
     if (!active) {
       setVideoUrl(null);
@@ -243,32 +258,50 @@ export function DiscoverFeed({
     fetchVideo(active).then((url) => {
       if (alive) setVideoUrl(url);
     });
+    for (const t of tracks.slice(activeIndex + 1, activeIndex + 1 + PREFETCH)) {
+      void fetchVideo(t);
+    }
     return () => {
       alive = false;
     };
-  }, [active]);
+  }, [active, tracks, activeIndex]);
 
   // Hand playback to whichever player owns this card.
   useEffect(() => {
-    if (videoUrl) {
-      player.pause();
-      video.replaceAsync(videoUrl).then(
-        () => video.play(),
-        () => {
-          // The video failed to load — put the audio preview back rather than
-          // leaving the card silent.
-          setVideoUrl(null);
-          player.play();
-        }
-      );
-    } else {
+    const trackId = active?.trackId;
+    const turn = ++swapRef.current;
+
+    if (!videoUrl || !trackId) {
+      setVideoFor(null);
       try {
         video.pause();
       } catch {
         // Nothing loaded yet.
       }
+      return;
     }
-  }, [videoUrl, video, player]);
+
+    // Hide the video and silence the preview for the moment the swap takes.
+    setVideoFor(null);
+    player.pause();
+
+    video.replaceAsync(videoUrl).then(
+      () => {
+        // A newer card has already claimed the player — leave it alone.
+        if (swapRef.current !== turn) return;
+        setVideoFor(trackId);
+        video.play();
+      },
+      () => {
+        if (swapRef.current !== turn) return;
+        // The video failed to load — put the audio preview back rather than
+        // leaving the card silent.
+        setVideoUrl(null);
+        setVideoFor(null);
+        player.play();
+      }
+    );
+  }, [videoUrl, active?.trackId, video, player]);
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(
@@ -289,20 +322,22 @@ export function DiscoverFeed({
         // Nothing loaded yet.
       }
     } else if (tracks.length > 0) {
-      if (videoUrl) video.play();
+      if (videoFor) video.play();
       else player.play();
     }
-  }, [isActive, focused, player, video, videoUrl, tracks.length]);
+  }, [isActive, focused, player, video, videoFor, tracks.length]);
 
+  // Read the state off the players rather than holding it here — that is the
+  // whole point of not subscribing at this level.
   const toggle = useCallback(() => {
-    if (videoUrl) {
+    if (videoFor) {
       if (video.playing) video.pause();
       else video.play();
       return;
     }
-    if (status.playing) player.pause();
+    if (player.playing) player.pause();
     else player.play();
-  }, [status.playing, player, video, videoUrl]);
+  }, [player, video, videoFor]);
 
   const toggleLike = useCallback(async (track: DiscoverTrack) => {
     const wasLiked = likedRef.current.has(track.trackId);
@@ -337,6 +372,68 @@ export function DiscoverFeed({
     }
   }, []);
 
+  /**
+   * "Not for me". Records the track and its artist so the next batch avoids
+   * them, then drops everything by that artist out of the list you're holding
+   * — saying no and then being shown the same artist twice more reads as the
+   * button doing nothing.
+   */
+  const dislike = useCallback((track: DiscoverTrack) => {
+    dislikedRef.current.add(track.trackId);
+    logInteraction("dislike", track);
+
+    void api("/api/discover/dislike", {
+      method: "POST",
+      body: JSON.stringify({
+        trackId: track.trackId,
+        name: track.name,
+        artist: track.artist,
+      }),
+    }).catch(() => {});
+
+    setTracks((prev) => prev.filter((t) => t.artist !== track.artist));
+  }, []);
+
+  const onReposted = useCallback((trackId: string, next: boolean) => {
+    setRepostedIds((prev) => {
+      const updated = new Set(prev);
+      if (next) updated.add(trackId);
+      else updated.delete(trackId);
+      return updated;
+    });
+  }, []);
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: DiscoverTrack; index: number }) => (
+      <Card
+        track={item}
+        cardH={cardH}
+        isActive={index === activeIndex}
+        player={player}
+        video={item.trackId === videoFor ? video : null}
+        onToggle={toggle}
+        liked={likedIds.has(item.trackId)}
+        onToggleLike={() => void toggleLike(item)}
+        onDislike={() => dislike(item)}
+        reposted={repostedIds.has(item.trackId)}
+        onReposted={onReposted}
+      />
+    ),
+    [
+      cardH,
+      activeIndex,
+      player,
+      video,
+      videoFor,
+      toggle,
+      likedIds,
+      toggleLike,
+      dislike,
+      repostedIds,
+      onReposted,
+    ]
+  );
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -361,87 +458,58 @@ export function DiscoverFeed({
       keyExtractor={(t) => t.trackId}
       pagingEnabled
       showsVerticalScrollIndicator={false}
-      snapToInterval={SCREEN_H}
+      // Measured, never assumed. See the note on WINDOW_H.
+      onLayout={(e) => {
+        const h = e.nativeEvent.layout.height;
+        if (h > 0 && Math.abs(h - cardH) > 1) setCardH(h);
+      }}
+      snapToInterval={cardH}
       snapToAlignment="start"
       decelerationRate="fast"
       viewabilityConfig={viewabilityConfig}
       onViewableItemsChanged={onViewableItemsChanged}
       getItemLayout={(_, index) => ({
-        length: SCREEN_H,
-        offset: SCREEN_H * index,
+        length: cardH,
+        offset: cardH * index,
         index,
       })}
-      // Rows are only re-rendered when something they read actually changes,
-      // and the liked set lives outside `data`.
-      extraData={rowState}
-      renderItem={({ item, index }) => (
-        <Card
-          track={item}
-          isActive={index === activeIndex}
-          isPlaying={videoUrl ? videoPlaying : status.playing}
-          progress={
-            videoUrl
-              ? videoDuration > 0
-                ? videoTime / videoDuration
-                : 0
-              : status.duration > 0
-                ? status.currentTime / status.duration
-                : 0
-          }
-          duration={videoUrl ? videoDuration : status.duration}
-          onSeek={(t) => {
-            if (videoUrl) video.currentTime = t;
-            else player.seekTo(t);
-          }}
-          video={index === activeIndex && videoUrl ? video : null}
-          onToggle={toggle}
-          liked={likedIds.has(item.trackId)}
-          onToggleLike={() => void toggleLike(item)}
-          reposted={repostedIds.has(item.trackId)}
-          onReposted={(next) =>
-            setRepostedIds((prev) => {
-              const updated = new Set(prev);
-              if (next) updated.add(item.trackId);
-              else updated.delete(item.trackId);
-              return updated;
-            })
-          }
-        />
-      )}
+      windowSize={3}
+      maxToRenderPerBatch={3}
+      initialNumToRender={2}
+      removeClippedSubviews
+      renderItem={renderItem}
     />
   );
 }
 
 function Card({
   track,
+  cardH,
   isActive,
-  isPlaying,
-  progress,
-  duration,
-  onSeek,
+  player,
   video,
   onToggle,
   liked,
   onToggleLike,
+  onDislike,
   reposted,
   onReposted,
 }: {
   track: DiscoverTrack;
+  cardH: number;
   isActive: boolean;
-  isPlaying: boolean;
-  progress: number;
-  duration: number;
-  onSeek: (seconds: number) => void;
+  player: AudioPlayer;
   /** The shared video player, but only for the card that currently owns it. */
   video: VideoPlayer | null;
   onToggle: () => void;
   liked: boolean;
   onToggleLike: () => void;
+  onDislike: () => void;
   reposted: boolean;
-  onReposted: (next: boolean) => void;
+  onReposted: (trackId: string, next: boolean) => void;
 }) {
   return (
-    <Pressable onPress={onToggle} style={[styles.card, { height: SCREEN_H }]}>
+    <Pressable onPress={onToggle} style={[styles.card, { height: cardH }]}>
       {track.albumImage ? (
         <Image source={{ uri: track.albumImage }} style={styles.art} />
       ) : (
@@ -466,10 +534,13 @@ function Card({
       {/* Keeps the title legible over bright artwork. */}
       <View style={styles.scrim} />
 
-      {isActive && !isPlaying ? (
-        <View style={styles.glyph}>
-          <Ionicons name="play" size={44} color="rgba(255,255,255,0.92)" />
-        </View>
+      {/* Only the active card subscribes to playback state. */}
+      {isActive ? (
+        video ? (
+          <VideoGlyph video={video} cardH={cardH} />
+        ) : (
+          <AudioGlyph player={player} cardH={cardH} />
+        )
       ) : null}
 
       {/* Sits clear of the title block on the left and the tab bar below. */}
@@ -477,6 +548,7 @@ function Card({
         track={track}
         liked={liked}
         onToggleLike={onToggleLike}
+        onDislike={onDislike}
         reposted={reposted}
         onReposted={onReposted}
         bottom={TAB_BAR_CLEARANCE + 96}
@@ -495,14 +567,76 @@ function Card({
 
         <OpenIn track={track} />
 
-        <Scrubber onSeek={onSeek} progress={progress} duration={duration} />
+        {isActive ? (
+          video ? (
+            <VideoBar video={video} />
+          ) : (
+            <AudioBar player={player} />
+          )
+        ) : (
+          <Scrubber onSeek={() => {}} progress={0} duration={0} />
+        )}
       </View>
     </Pressable>
   );
 }
 
+/* ------------------------------------------------------------------ *
+ * Playback state lives in these four, never in the feed. Each exists  *
+ * only for the active card, so their ticking re-renders one small     *
+ * subtree instead of the whole list.                                  *
+ * ------------------------------------------------------------------ */
+
+function Glyph({ cardH }: { cardH: number }) {
+  return (
+    <View style={[styles.glyph, { top: cardH / 2 - 34 }]}>
+      <Ionicons name="play" size={44} color="rgba(255,255,255,0.92)" />
+    </View>
+  );
+}
+
+function AudioGlyph({ player, cardH }: { player: AudioPlayer; cardH: number }) {
+  const status = useAudioPlayerStatus(player);
+  return status.playing ? null : <Glyph cardH={cardH} />;
+}
+
+function VideoGlyph({ video, cardH }: { video: VideoPlayer; cardH: number }) {
+  const { isPlaying } = useEvent(video, "playingChange", {
+    isPlaying: video.playing,
+  });
+  return isPlaying ? null : <Glyph cardH={cardH} />;
+}
+
+function AudioBar({ player }: { player: AudioPlayer }) {
+  const status = useAudioPlayerStatus(player);
+  return (
+    <Scrubber
+      onSeek={(t) => player.seekTo(t)}
+      progress={status.duration > 0 ? status.currentTime / status.duration : 0}
+      duration={status.duration}
+    />
+  );
+}
+
+function VideoBar({ video }: { video: VideoPlayer }) {
+  // timeUpdate carries currentTime only; duration is a player property that
+  // fills in once the source loads.
+  const tick = useEvent(video, "timeUpdate");
+  const current = tick?.currentTime ?? video.currentTime ?? 0;
+  const duration = video.duration ?? 0;
+  return (
+    <Scrubber
+      onSeek={(t) => {
+        video.currentTime = t;
+      }}
+      progress={duration > 0 ? current / duration : 0}
+      duration={duration}
+    />
+  );
+}
+
 /**
- * Like, repost and share, stacked down the right edge of the card.
+ * Not-for-me, like, repost and share, stacked down the right edge.
  *
  * A repost stores the Deezer track id in place of a history id, which is what
  * the web app has always done for Discover — these tracks are chart rows, not
@@ -512,6 +646,7 @@ function Rail({
   track,
   liked,
   onToggleLike,
+  onDislike,
   reposted,
   onReposted,
   bottom,
@@ -519,8 +654,9 @@ function Rail({
   track: DiscoverTrack;
   liked: boolean;
   onToggleLike: () => void;
+  onDislike: () => void;
   reposted: boolean;
-  onReposted: (next: boolean) => void;
+  onReposted: (trackId: string, next: boolean) => void;
   bottom: number;
 }) {
   const [busy, setBusy] = useState(false);
@@ -540,7 +676,7 @@ function Rail({
           trackUrl: track.spotifyUrl ?? track.deezerUrl ?? null,
         }),
       });
-      onReposted(res.action === "reposted");
+      onReposted(track.trackId, res.action === "reposted");
     } catch {
       // Say nothing rather than claim a repost that did not happen.
     } finally {
@@ -561,6 +697,12 @@ function Rail({
 
   return (
     <View style={[styles.rail, { bottom }]}>
+      {/* Above the heart, as the opposite of it. */}
+      <RailButton
+        icon="heart-dislike-outline"
+        tint="#fff"
+        onPress={onDislike}
+      />
       <RailButton
         icon={liked ? "heart" : "heart-outline"}
         tint={liked ? "#ff3b5c" : "#fff"}
@@ -688,7 +830,6 @@ const styles = StyleSheet.create({
   glyph: {
     position: "absolute",
     alignSelf: "center",
-    top: SCREEN_H / 2 - 34,
     width: 68,
     height: 68,
     borderRadius: 34,

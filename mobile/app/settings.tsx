@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { clearDiscoverCache } from "../components/DiscoverFeed";
 import { NavRow, ScreenHeader, Section, Toggle, styles } from "../components/Form";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -49,6 +50,29 @@ export default function Settings() {
     },
     []
   );
+
+  /**
+   * Drops the music video lookups this session has remembered, so Discover
+   * asks for them again. Taste, likes and dislikes live on the server and are
+   * deliberately untouched — this is a cache, not your data.
+   */
+  const clearCache = useCallback(() => {
+    Alert.alert(
+      "Clear cache?",
+      "Discover will look up music videos again. Your likes, dislikes and taste are kept.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Clear",
+          style: "destructive",
+          onPress: () => {
+            clearDiscoverCache();
+            Alert.alert("Cleared", "Discover will look videos up fresh.");
+          },
+        },
+      ]
+    );
+  }, []);
 
   const toggleGhost = useCallback(async () => {
     const previous = user?.ghost_mode ?? false;
@@ -103,6 +127,15 @@ export default function Settings() {
             value={user?.show_top_stats !== false}
             onChange={(v) => void toggleFlag("show_top_stats", v)}
           />
+        </Section>
+
+        <Section title="STORAGE">
+          <Pressable
+            onPress={clearCache}
+            style={({ pressed }) => [styles.rowButton, pressed && styles.pressed]}
+          >
+            <Text style={styles.rowButtonLabel}>Clear cache</Text>
+          </Pressable>
         </Section>
 
         <Section title="SESSION">
