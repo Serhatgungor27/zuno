@@ -12,22 +12,30 @@ function adminDb() {
   );
 }
 
-// GET /api/repost?username=X — get reposts for a user
+// GET /api/repost?username=X — get reposts for a user.
+// With no username, returns the caller's own, which is what a feed needs to
+// draw the repost button in the right state.
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const username = url.searchParams.get("username");
-  if (!username) return NextResponse.json({ ok: false }, { status: 400 });
 
   const db = adminDb();
 
-  // Resolve user id from profiles
-  const { data: profile } = await db.from("profiles").select("id").eq("username", username).single();
-  if (!profile) return NextResponse.json({ ok: true, reposts: [] });
+  let userId: string | null = null;
+  if (username) {
+    const { data: profile } = await db.from("profiles").select("id").eq("username", username).single();
+    if (!profile) return NextResponse.json({ ok: true, reposts: [] });
+    userId = profile.id as string;
+  } else {
+    const auth = await getApiAuth(req);
+    if (!auth) return NextResponse.json({ ok: false, error: "not_logged_in" }, { status: 401 });
+    userId = auth.user.id;
+  }
 
   const { data: reposts } = await db
     .from("reposts")
     .select("*")
-    .eq("user_id", profile.id)
+    .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(50);
 

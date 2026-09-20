@@ -1,23 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Linking from "expo-linking";
 import {
   setAudioModeAsync,
   useAudioPlayer,
   useAudioPlayerStatus,
   type AudioPlayer,
 } from "expo-audio";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
   FlatList,
   Image,
   Pressable,
+  Share,
   StyleSheet,
   Text,
   View,
   type ViewToken,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Scrubber } from "./Scrubber";
 import { TAB_BAR_CLEARANCE } from "./TabBar";
@@ -30,6 +31,25 @@ const { height: SCREEN_H } = Dimensions.get("window");
 /** Genre groups the route serves; a refresh moves to a different one. */
 const PAGES = 5;
 
+type Prefs = { genres: string[]; artists: string[] };
+type LikedResponse = { tracks: { trackId: string; artist: string }[] };
+type RepostResponse = { reposts: { history_id: string | null }[] };
+
+/**
+ * Analytics for what a card actually got: a like, a hand-off to Spotify, a
+ * share. Fire-and-forget — nothing the reader does should wait on it.
+ */
+function logInteraction(action: string, track: DiscoverTrack) {
+  void api("/api/discover/interact", {
+    method: "POST",
+    body: JSON.stringify({
+      trackId: track.trackId,
+      artist: track.artist,
+      action,
+    }),
+  }).catch(() => {});
+}
+
 export function DiscoverFeed({
   refreshKey = 0,
   isActive = true,
@@ -41,9 +61,17 @@ export function DiscoverFeed({
   const listRef = useRef<FlatList<DiscoverTrack>>(null);
   const pageRef = useRef(0);
   const [tracks, setTracks] = useState<DiscoverTrack[]>([]);
-  // The route already personalises on genres and artists; the app just never
-  // told it anything about you.
-  const [taste, setTaste] = useState<Taste | null>(null);
+  // What the route should personalise on. Null until both taste and likes have
+  // answered, so the feed is asked for once rather than loaded generic and
+  // then replaced under the reader.
+  const [prefs, setPrefs] = useState<Prefs | null>(null);
+  // Mirrored in a ref so liking a track repaints its heart without putting the
+  // liked set in the fetch effect's deps, which would reload the whole feed.
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const likedRef = useRef<Set<string>>(new Set());
+  // Reposts are toggled server-side, so without knowing what's already
+  // reposted the button would offer to repost something it would delete.
+  const [repostedIds, setRepostedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -54,9 +82,38 @@ export function DiscoverFeed({
   const status = useAudioPlayerStatus(player);
 
   useEffect(() => {
-    api<Taste>("/api/taste")
-      .then(setTaste)
-      .catch(() => setTaste(null));
+    let alive = true;
+    Promise.all([
+      api<Taste>("/api/taste").catch(() => null),
+      api<LikedResponse>("/api/discover/like").catch(() => null),
+      api<RepostResponse>("/api/repost").catch(() => null),
+    ]).then(([taste, likes, reposts]) => {
+      if (!alive) return;
+
+      setRepostedIds(
+        new Set(
+          (reposts?.reposts ?? [])
+            .map((r) => r.history_id)
+            .filter((id): id is string => !!id)
+        )
+      );
+
+      const liked = likes?.tracks ?? [];
+      const ids = new Set(liked.map((t) => t.trackId));
+      likedRef.current = ids;
+      setLikedIds(ids);
+
+      // An artist you actually hearted is a stronger signal than one you typed
+      // into settings once, so those come first.
+      const likedArtists = [...new Set(liked.map((t) => t.artist).filter(Boolean))];
+      setPrefs({
+        genres: taste?.music_genres ?? [],
+        artists: [...likedArtists, ...(taste?.favorite_artists ?? [])].slice(0, 3),
+      });
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -66,6 +123,8 @@ export function DiscoverFeed({
   }, []);
 
   useEffect(() => {
+    if (!prefs) return;
+
     // Each refresh asks for a different genre group, so you get a genuinely
     // new set rather than the same chart reshuffled.
     if (refreshKey > 0) {
@@ -73,12 +132,13 @@ export function DiscoverFeed({
     }
     setLoading(true);
     const params = new URLSearchParams({ page: String(pageRef.current) });
-    if (taste?.music_genres?.length) {
-      params.set("genres", taste.music_genres.join(","));
-    }
-    if (taste?.favorite_artists?.length) {
-      params.set("artists", taste.favorite_artists.slice(0, 3).join(","));
-    }
+    if (prefs.genres.length) params.set("genres", prefs.genres.join(","));
+    if (prefs.artists.length) params.set("artists", prefs.artists.join(","));
+    // Read from the ref, not state: a reload right after liking should drop
+    // what you just liked, but liking alone must not refetch.
+    const exclude = [...likedRef.current].slice(0, 100);
+    if (exclude.length) params.set("excludeIds", exclude.join(","));
+
     api<DiscoverResponse>(`/api/discover?${params}`)
       .then((data) => {
         setTracks((data.tracks ?? []).filter((t) => t.previewUrl));
@@ -90,7 +150,14 @@ export function DiscoverFeed({
         setError(e instanceof Error ? e.message : "Could not load Discover.")
       )
       .finally(() => setLoading(false));
-  }, [refreshKey, taste]);
+  }, [refreshKey, prefs]);
+
+  // Identity changes only when one of the sets is replaced, so rows re-render
+  // on a like or repost and not on every frame.
+  const rowState = useMemo(
+    () => ({ likedIds, repostedIds }),
+    [likedIds, repostedIds]
+  );
 
   const active = tracks[activeIndex];
 
@@ -132,6 +199,39 @@ export function DiscoverFeed({
     else player.play();
   }, [status.playing, player]);
 
+  const toggleLike = useCallback(async (track: DiscoverTrack) => {
+    const wasLiked = likedRef.current.has(track.trackId);
+
+    // Optimistic — a heart that waits on a round trip feels broken.
+    const next = new Set(likedRef.current);
+    if (wasLiked) next.delete(track.trackId);
+    else next.add(track.trackId);
+    likedRef.current = next;
+    setLikedIds(next);
+    logInteraction(wasLiked ? "unlike" : "like", track);
+
+    try {
+      await api("/api/discover/like", {
+        method: "POST",
+        body: JSON.stringify({
+          trackId: track.trackId,
+          name: track.name,
+          artist: track.artist,
+          albumImage: track.albumImage,
+          previewUrl: track.previewUrl,
+          spotifyUrl: track.spotifyUrl,
+        }),
+      });
+    } catch {
+      // Put the heart back rather than showing a like that didn't save.
+      const back = new Set(likedRef.current);
+      if (wasLiked) back.add(track.trackId);
+      else back.delete(track.trackId);
+      likedRef.current = back;
+      setLikedIds(back);
+    }
+  }, []);
+
   if (loading) {
     return (
       <View style={styles.centered}>
@@ -166,6 +266,9 @@ export function DiscoverFeed({
         offset: SCREEN_H * index,
         index,
       })}
+      // Rows are only re-rendered when something they read actually changes,
+      // and the liked set lives outside `data`.
+      extraData={rowState}
       renderItem={({ item, index }) => (
         <Card
           track={item}
@@ -175,6 +278,17 @@ export function DiscoverFeed({
           duration={status.duration}
           player={player}
           onToggle={toggle}
+          liked={likedIds.has(item.trackId)}
+          onToggleLike={() => void toggleLike(item)}
+          reposted={repostedIds.has(item.trackId)}
+          onReposted={(next) =>
+            setRepostedIds((prev) => {
+              const updated = new Set(prev);
+              if (next) updated.add(item.trackId);
+              else updated.delete(item.trackId);
+              return updated;
+            })
+          }
         />
       )}
     />
@@ -189,6 +303,10 @@ function Card({
   duration,
   player,
   onToggle,
+  liked,
+  onToggleLike,
+  reposted,
+  onReposted,
 }: {
   track: DiscoverTrack;
   isActive: boolean;
@@ -197,9 +315,11 @@ function Card({
   duration: number;
   player: AudioPlayer;
   onToggle: () => void;
+  liked: boolean;
+  onToggleLike: () => void;
+  reposted: boolean;
+  onReposted: (next: boolean) => void;
 }) {
-  const insets = useSafeAreaInsets();
-
   return (
     <Pressable onPress={onToggle} style={[styles.card, { height: SCREEN_H }]}>
       {track.albumImage ? (
@@ -217,20 +337,195 @@ function Card({
         </View>
       ) : null}
 
+      {/* Sits clear of the title block on the left and the tab bar below. */}
+      <Rail
+        track={track}
+        liked={liked}
+        onToggleLike={onToggleLike}
+        reposted={reposted}
+        onReposted={onReposted}
+        bottom={TAB_BAR_CLEARANCE + 96}
+      />
+
       <View style={[styles.meta, { paddingBottom: TAB_BAR_CLEARANCE }]}>
-        <Text style={styles.track} numberOfLines={2}>
+        <Text style={[styles.track, styles.metaText]} numberOfLines={2}>
           {track.name}
         </Text>
-        <View style={styles.artistRow}>
+        <View style={[styles.artistRow, styles.metaText]}>
           <Text style={styles.artist} numberOfLines={1}>
             {track.artist}
           </Text>
           {track.explicit ? <Text style={styles.explicit}>E</Text> : null}
         </View>
 
+        <OpenIn track={track} />
+
         <Scrubber player={player} progress={progress} duration={duration} />
       </View>
     </Pressable>
+  );
+}
+
+/**
+ * Like, repost and share, stacked down the right edge of the card.
+ *
+ * A repost stores the Deezer track id in place of a history id, which is what
+ * the web app has always done for Discover — these tracks are chart rows, not
+ * something anyone was caught listening to.
+ */
+function Rail({
+  track,
+  liked,
+  onToggleLike,
+  reposted,
+  onReposted,
+  bottom,
+}: {
+  track: DiscoverTrack;
+  liked: boolean;
+  onToggleLike: () => void;
+  reposted: boolean;
+  onReposted: (next: boolean) => void;
+  bottom: number;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const toggleRepost = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    logInteraction(reposted ? "unrepost" : "repost", track);
+    try {
+      const res = await api<{ action: "reposted" | "removed" }>("/api/repost", {
+        method: "POST",
+        body: JSON.stringify({
+          historyId: track.trackId,
+          trackName: track.name,
+          artist: track.artist,
+          albumImage: track.albumImage,
+          trackUrl: track.spotifyUrl ?? track.deezerUrl ?? null,
+        }),
+      });
+      onReposted(res.action === "reposted");
+    } catch {
+      // Say nothing rather than claim a repost that did not happen.
+    } finally {
+      setBusy(false);
+    }
+  }, [busy, reposted, track, onReposted]);
+
+  const share = useCallback(() => {
+    logInteraction("share", track);
+    const url =
+      track.spotifyUrl ??
+      track.deezerUrl ??
+      `https://open.spotify.com/search/${encodeURIComponent(`${track.name} ${track.artist}`.trim())}`;
+    Share.share({ message: `${track.name} — ${track.artist}\n${url}` }).catch(
+      () => {}
+    );
+  }, [track]);
+
+  return (
+    <View style={[styles.rail, { bottom }]}>
+      <RailButton
+        icon={liked ? "heart" : "heart-outline"}
+        tint={liked ? "#ff3b5c" : "#fff"}
+        active={liked}
+        activeBorder="rgba(255,59,92,0.6)"
+        onPress={onToggleLike}
+      />
+      <RailButton
+        icon="repeat"
+        tint={reposted ? "#4ade80" : "#fff"}
+        active={reposted}
+        activeBorder="rgba(74,222,128,0.6)"
+        onPress={() => void toggleRepost()}
+      />
+      <RailButton icon="share-social-outline" tint="#fff" onPress={share} />
+    </View>
+  );
+}
+
+function RailButton({
+  icon,
+  tint,
+  active,
+  activeBorder,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  tint: string;
+  active?: boolean;
+  activeBorder?: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={8}
+      style={({ pressed }) => [
+        styles.railButton,
+        active && activeBorder ? { borderColor: activeBorder } : null,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Ionicons name={icon} size={21} color={tint} />
+    </Pressable>
+  );
+}
+
+/**
+ * Hand-off buttons. The YouTube id is looked up only when asked for: that
+ * route costs API quota on a miss, though it caches each track.
+ */
+function OpenIn({ track }: { track: DiscoverTrack }) {
+  const [findingVideo, setFindingVideo] = useState(false);
+
+  const openSpotify = () => {
+    logInteraction("open_spotify", track);
+    const url =
+      track.spotifyUrl ??
+      `https://open.spotify.com/search/${encodeURIComponent(`${track.name} ${track.artist}`.trim())}`;
+    Linking.openURL(url).catch(() => {});
+  };
+
+  const openYouTube = async () => {
+    logInteraction("open_youtube", track);
+    setFindingVideo(true);
+    const params = new URLSearchParams({ track: track.name, artist: track.artist });
+    let url = `https://www.youtube.com/results?search_query=${encodeURIComponent(`${track.name} ${track.artist}`.trim())}`;
+    try {
+      const res = await api<{ videoId: string | null }>(`/api/discover/youtube?${params}`);
+      if (res.videoId) url = `https://www.youtube.com/watch?v=${res.videoId}`;
+    } catch {
+      // Fall through to the search page rather than failing the tap.
+    }
+    setFindingVideo(false);
+    Linking.openURL(url).catch(() => {});
+  };
+
+  return (
+    <View style={styles.openIn}>
+      <Pressable
+        onPress={openSpotify}
+        style={({ pressed }) => [styles.pill, styles.spotify, pressed && styles.pressed]}
+      >
+        <Ionicons name="musical-note" size={15} color="#fff" />
+        <Text style={styles.pillLabel}>Spotify</Text>
+      </Pressable>
+
+      <Pressable
+        onPress={() => void openYouTube()}
+        disabled={findingVideo}
+        style={({ pressed }) => [styles.pill, styles.youtube, pressed && styles.pressed]}
+      >
+        {findingVideo ? (
+          <ActivityIndicator color="#fff" size="small" />
+        ) : (
+          <Ionicons name="logo-youtube" size={15} color="#fff" />
+        )}
+        <Text style={styles.pillLabel}>Full video</Text>
+      </Pressable>
+    </View>
   );
 }
 
@@ -274,6 +569,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 8,
   },
+  // Only the text and pills keep clear of the rail — the scrubber still runs
+  // the full width of the card.
+  metaText: { paddingRight: 62 },
+  pressed: { opacity: 0.6 },
+  rail: { position: "absolute", right: 12, gap: 16, alignItems: "center" },
+  railButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+  },
+  openIn: { flexDirection: "row", gap: 8, paddingTop: 2, paddingRight: 62 },
+  pill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  spotify: { backgroundColor: "#1db954" },
+  youtube: { backgroundColor: "rgba(255,255,255,0.16)" },
+  pillLabel: { color: "#fff", fontSize: 13, fontWeight: "600" },
   track: {
     color: theme.foreground,
     fontSize: 26,
