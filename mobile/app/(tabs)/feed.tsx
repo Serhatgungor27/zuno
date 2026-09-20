@@ -22,7 +22,7 @@ import { Fade } from "../../components/Fade";
 import { PlayerSheet, type NowPlaying } from "../../components/PlayerSheet";
 import { TAB_BAR_CLEARANCE } from "../../components/TabBar";
 import { api } from "../../lib/api";
-import { onTabBarScroll, resetTabBar } from "../../lib/tabBarScroll";
+import { expandTabBar, onTabBarScroll, resetTabBar } from "../../lib/tabBarScroll";
 import { theme } from "../../lib/theme";
 import * as Linking from "expo-linking";
 
@@ -188,6 +188,13 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
   }, []);
   useEffect(() => resetTabBar, []);
+
+  // Moving between Following, Discover and Trending is a fresh start, so the
+  // bar comes back out. It only expanded on route changes before, and the
+  // pager never changes route — these three are one screen.
+  useEffect(() => {
+    expandTabBar();
+  }, [tab]);
 
   const play = useCallback(
     async (item: {
