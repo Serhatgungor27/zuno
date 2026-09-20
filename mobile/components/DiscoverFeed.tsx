@@ -205,11 +205,14 @@ export function DiscoverFeed({
     }
     setLoading(true);
     const params = new URLSearchParams({ page: String(pageRef.current) });
-    if (prefs.genres.length) params.set("genres", prefs.genres.join(","));
-    if (prefs.artists.length) params.set("artists", prefs.artists.join(","));
-    if (prefs.excludeArtists.length) {
-      params.set("excludeArtists", prefs.excludeArtists.join(","));
-    }
+    // Defaulted rather than read straight off `prefs`: a Fast Refresh can hand
+    // back a prefs object shaped by an older version of this file.
+    const genres = prefs.genres ?? [];
+    const artists = prefs.artists ?? [];
+    const excludeArtists = prefs.excludeArtists ?? [];
+    if (genres.length) params.set("genres", genres.join(","));
+    if (artists.length) params.set("artists", artists.join(","));
+    if (excludeArtists.length) params.set("excludeArtists", excludeArtists.join(","));
     // Read from the refs, not state: a reload right after liking should drop
     // what you just liked, but liking alone must not refetch.
     const exclude = [...likedRef.current, ...dislikedRef.current].slice(0, 120);
