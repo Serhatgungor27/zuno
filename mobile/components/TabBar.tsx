@@ -1,5 +1,7 @@
 import { BlurView } from "expo-blur";
-import { Pressable, StyleSheet, View } from "react-native";
+import { router, useSegments } from "expo-router";
+import { useEffect } from "react";
+import { Animated, Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -9,26 +11,17 @@ import {
   ProfileIcon,
   SearchIcon,
 } from "./TabIcons";
+import { expandTabBar, tabBarRetract } from "../lib/tabBarScroll";
 import { theme } from "../lib/theme";
 
-type IconProps = { size?: number; color: string; filled?: boolean };
-
 /**
- * Minimal shape of what the navigator hands a custom tab bar. Declared here
- * because expo-router vendors react-navigation rather than exposing
- * @react-navigation/bottom-tabs as a resolvable package.
+ * How much room a scrolling screen must leave at the bottom so its last row
+ * clears the floating capsule: the bar itself, the gap it sits in, and a
+ * little breathing space. Screens add this to their contentContainer padding.
  */
-type TabBarProps = {
-  state: { index: number; routes: { key: string; name: string }[] };
-  navigation: {
-    navigate: (name: string) => void;
-    emit: (event: {
-      type: "tabPress";
-      target: string;
-      canPreventDefault: true;
-    }) => { defaultPrevented: boolean };
-  };
-};
+export const TAB_BAR_CLEARANCE = 42 + 24 + 16;
+
+type IconProps = { size?: number; color: string; filled?: boolean };
 
 const ICONS: Record<string, (p: IconProps) => React.ReactElement> = {
   feed: FeedIcon,
@@ -38,43 +31,59 @@ const ICONS: Record<string, (p: IconProps) => React.ReactElement> = {
   profile: ProfileIcon,
 };
 
-/**
- * A floating capsule bar, rendered ourselves rather than styled through
- * `tabBarStyle`. The navigator positions its own container and overrides
- * left/right/bottom, so the capsule can only be inset from the screen edges
- * by drawing it directly.
- */
-export function TabBar({ state, navigation }: TabBarProps) {
+const ORDER = ["feed", "discover", "search", "notifications", "profile"] as const;
+
+export function TabBar() {
   const insets = useSafeAreaInsets();
+  const segments = useSegments();
+  const current = segments as string[];
+  const active = ORDER.find((name) => current.includes(name)) ?? "feed";
+
+  // Any tab change brings the bar back out, however you got there — a tap, a
+  // deep link, or going back.
+  useEffect(() => {
+    expandTabBar();
+  }, [active]);
+
+  // Shrinks and sinks as you scroll down, restores on the way back up.
+  const scale = tabBarRetract.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.82],
+  });
+  const translateY = tabBarRetract.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 18],
+  });
+  const opacity = tabBarRetract.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 0.55],
+  });
 
   return (
     <View
       pointerEvents="box-none"
-      style={[styles.wrap, { paddingBottom: insets.bottom > 0 ? insets.bottom - 4 : 14 }]}
+      style={[styles.wrap, { paddingBottom: Math.max(insets.bottom - 15, 10) }]}
     >
       {/* Real frosted glass, not a flat translucent fill — content moving
           underneath shows through, which is what makes Instagram's blend. */}
-      <BlurView intensity={60} tint="dark" style={styles.capsule}>
-        {state.routes.map((route, index) => {
-          const focused = state.index === index;
-          const Icon = ICONS[route.name];
+      <Animated.View style={{ transform: [{ scale }, { translateY }], opacity }}>
+      <BlurView intensity={55} tint="light" style={styles.capsule}>
+        {ORDER.map((name) => {
+          const focused = active === name;
+          const Icon = ICONS[name];
           if (!Icon) return null;
 
           return (
             <Pressable
-              key={route.key}
+              key={name}
               accessibilityRole="button"
               accessibilityState={focused ? { selected: true } : {}}
               style={styles.slot}
               onPress={() => {
-                const event = navigation.emit({
-                  type: "tabPress",
-                  target: route.key,
-                  canPreventDefault: true,
-                });
-                if (!focused && !event.defaultPrevented) {
-                  navigation.navigate(route.name);
-                }
+                // Expand immediately rather than waiting for the route to
+                // settle, so the tap feels answered.
+                expandTabBar();
+                if (!focused) router.navigate(`/(tabs)/${name}` as never);
               }}
             >
               <View style={[styles.pill, focused && styles.pillActive]}>
@@ -88,6 +97,7 @@ export function TabBar({ state, navigation }: TabBarProps) {
           );
         })}
       </BlurView>
+      </Animated.View>
     </View>
   );
 }
@@ -99,6 +109,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     alignItems: "center",
+    paddingTop: 8,
   },
   capsule: {
     flexDirection: "row",
@@ -108,8 +119,10 @@ const styles = StyleSheet.create({
     height: 42,
     width: "89%",
     borderRadius: 21,
-    backgroundColor: "rgba(28,28,30,0.45)",
+    backgroundColor: "rgba(255,255,255,0.14)",
     overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.18)",
     paddingHorizontal: 4,
     shadowColor: "#000",
     shadowOpacity: 0.4,
@@ -128,5 +141,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  pillActive: { backgroundColor: "rgba(255,255,255,0.16)" },
+  pillActive: { backgroundColor: "rgba(255,255,255,0.22)" },
 });

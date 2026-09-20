@@ -10,7 +10,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { TAB_BAR_CLEARANCE } from "../../components/TabBar";
 import { api } from "../../lib/api";
+import { onTabBarScroll } from "../../lib/tabBarScroll";
 import { theme } from "../../lib/theme";
 import type { FeedResponse, VibeItem } from "../../lib/types";
 
@@ -52,9 +54,11 @@ export default function Feed() {
   return (
     <FlatList
       style={styles.list}
-      contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: 24 }}
+      contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: TAB_BAR_CLEARANCE }}
       data={items}
       keyExtractor={(item) => item.vibeId}
+      scrollEventThrottle={16}
+      onScroll={onTabBarScroll}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}

@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
+import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -15,7 +16,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { PlayerSheet, type NowPlaying } from "../../components/PlayerSheet";
+import { TAB_BAR_CLEARANCE } from "../../components/TabBar";
 import { api } from "../../lib/api";
+import { onTabBarScroll, resetTabBar } from "../../lib/tabBarScroll";
 import { useAuth } from "../../lib/auth";
 import { theme } from "../../lib/theme";
 import type {
@@ -28,6 +31,10 @@ import type {
 
 const GUTTER = 2;
 const TILE = (Dimensions.get("window").width - GUTTER * 2) / 3;
+// Two columns with a 16pt outer margin and a 10pt gutter, as Spotify uses.
+// Sized so roughly two and a half cards show, which reads as "scrollable"
+// without anyone having to try it.
+const SHELF_CARD_W = Math.round((Dimensions.get("window").width - 32 - 20) / 2.4);
 
 type TabKey = "vibes" | "reposts" | "taste";
 
@@ -35,7 +42,7 @@ type Me = { ok: boolean; username: string; avatar_url: string | null };
 
 export default function Profile() {
   const insets = useSafeAreaInsets();
-  const { session, signOut } = useAuth();
+  const { session } = useAuth();
 
   const [me, setMe] = useState<Me | null>(null);
   const [user, setUser] = useState<ZunoUser | null>(null);
@@ -95,6 +102,9 @@ export default function Profile() {
   useEffect(() => {
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
   }, []);
+
+  // Leaving with the bar hidden would strand it on the next screen.
+  useEffect(() => resetTabBar, []);
 
   /**
    * History and repost rows carry no preview URL, so the track is resolved on
@@ -162,17 +172,20 @@ export default function Profile() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
     <ScrollView
       style={styles.container}
-      contentContainerStyle={{ paddingBottom: 32 }}
+      contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE }}
       showsVerticalScrollIndicator={false}
       scrollEventThrottle={16}
-      onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+      onScroll={(e) => {
+        setScrollY(e.nativeEvent.contentOffset.y);
+        onTabBarScroll(e);
+      }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.muted} />
       }
     >
       <View onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}>
       <View style={styles.topBar}>
-        <Pressable onPress={() => void signOut()} hitSlop={12}>
+        <Pressable onPress={() => router.push("/settings")} hitSlop={12}>
           <Ionicons name="settings-outline" size={24} color={theme.foreground} />
         </Pressable>
       </View>
@@ -195,6 +208,7 @@ export default function Profile() {
         </View>
 
         <Pressable
+          onPress={() => router.push("/edit-profile")}
           style={({ pressed }) => [styles.editButton, pressed && styles.pressed]}
         >
           <Text style={styles.editLabel}>Edit Profile</Text>
@@ -360,11 +374,155 @@ function Grid({
   );
 }
 
+/**
+ * Taste cards: real genre artwork behind a centred label.
+ *
+ * Deezer publishes curated collage art per genre and the ids are stable even
+ * though the names come back localised, so the map is by id. Anything without
+ * artwork — Country, every podcast genre, and free-text artists — falls back
+ * to a colour block, hashed from the name so it stays the same between
+ * sessions rather than shuffling on each render.
+ */
+const DEEZER_GENRE: Record<string, number> = {
+  "Hip-Hop": 116,
+  "R&B": 165,
+  Pop: 132,
+  Rock: 152,
+  Electronic: 106,
+  Jazz: 129,
+  Classical: 98,
+  Afrobeats: 2,
+  Latin: 197,
+  Metal: 464,
+  Indie: 85,
+  Soul: 169,
+  Reggae: 144,
+  Dance: 113,
+  "K-Pop": 16,
+};
+
+/**
+ * Podcast categories have no genre-artwork endpoint the way music does, so
+ * each is pinned to the cover of a representative show from the iTunes
+ * podcast directory. Resolved once and baked in rather than searched at
+ * runtime — it is 15 fixed values, and a lookup per card would be 15 requests
+ * every time the tab opens. If a URL ever dies the card falls back to its
+ * colour block, because the colour is painted underneath the image.
+ */
+const PODCAST_ART: Record<string, string> = {
+  "True Crime":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts126/v4/8c/35/04/8c350430-2fbf-98d0-0a25-00b76550ffeb/mza_13445204151221888086.jpg/600x600bb.jpg",
+  "Comedy":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts124/v4/88/f3/c0/88f3c004-6ba0-e581-35c8-f4bc692ec938/mza_5246233194426696407.jpg/600x600bb.jpg",
+  "Tech":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/ec/7b/2c/ec7b2c25-5c3a-4ba0-5472-d83b1046f8aa/mza_11538258655927977860.jpg/600x600bb.jpg",
+  "Business":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts125/v4/ab/11/06/ab11065a-57cd-8472-526e-d5799b2a8163/mza_13207937671651466185.jpg/600x600bb.jpg",
+  "Health":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts115/v4/cd/da/74/cdda741e-3cc9-76ca-4133-f514254ea9eb/mza_3127523497318925467.jpg/600x600bb.jpg",
+  "Sports":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/35/74/6a/35746a0c-7687-7dde-ff04-338d93e78303/mza_10377078556009223546.jpg/600x600bb.jpg",
+  "News":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/27/a0/ab/27a0abb7-817f-d80c-4fed-6fd04d424333/mza_16804553558295235422.jpg/600x600bb.jpg",
+  "Science":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/d7/88/9b/d7889bab-dca5-77ba-3d0c-7fae8f16ab11/mza_8810454848871508.jpg/600x600bb.jpg",
+  "History":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/bf/89/a5/bf89a586-3f77-bf37-7ba3-b75f1bca7bfa/mza_1664785978944494824.jpg/600x600bb.jpg",
+  "Culture":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/e1/e9/94/e1e994a8-4a05-9447-f3b4-a68cd3325a2f/mza_190305956483207942.jpg/600x600bb.jpg",
+  "Politics":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/93/4f/85/934f8542-7a14-cf77-7d0e-63604579de3c/mza_4576536635025194283.jpg/600x600bb.jpg",
+  "Education":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/c6/2f/c7/c62fc776-797d-6de9-2028-4031c6c97306/mza_5737607185143431930.jpg/600x600bb.jpg",
+  "Finance":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts211/v4/4a/57/b0/4a57b01e-df6a-0c5b-378e-07c8eb88b039/mza_17057213945640981147.jpeg/600x600bb.jpg",
+  "Entertainment":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts112/v4/2c/65/b3/2c65b33a-b613-b702-c74d-1803a8a0280e/mza_7123405816929739117.jpg/600x600bb.jpg",
+  "Self-Help":
+    "https://is1-ssl.mzstatic.com/image/thumb/Podcasts221/v4/55/cb/2b/55cb2b32-1d7e-8231-1a09-b8bcac6a90e2/mza_11101309328025720899.png/600x600bb.jpg",
+};
+
+const CARD_COLOURS = [
+  "#8D67AB", "#006450", "#477D1D", "#E13300", "#537AA1",
+  "#E8115B", "#1E3264", "#DC148C", "#B02897", "#148A08",
+  "#7358FF", "#BA5D07", "#503750", "#0D73EC", "#E91429",
+];
+
+/**
+ * Artist photos, looked up once per name and kept for the session. Artists are
+ * free text so they cannot be baked in like genres, but a given profile only
+ * lists a handful and the cache means switching tabs does not refetch.
+ */
+const artistArt = new Map<string, string | null>();
+
+async function fetchArtistArt(name: string): Promise<string | null> {
+  const cached = artistArt.get(name);
+  if (cached !== undefined) return cached;
+  try {
+    const res = await fetch(
+      `https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=1`
+    );
+    const data = (await res.json()) as { data?: { picture_xl?: string }[] };
+    const url = data.data?.[0]?.picture_xl ?? null;
+    artistArt.set(name, url);
+    return url;
+  } catch {
+    artistArt.set(name, null);
+    return null;
+  }
+}
+
+function colourFor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  return CARD_COLOURS[hash % CARD_COLOURS.length];
+}
+
+function TasteCard({ label, artist }: { label: string; artist?: boolean }) {
+  const genreId = DEEZER_GENRE[label];
+  const fixedArt = genreId
+    // The endpoint 302s to the CDN; Image follows redirects.
+    ? `https://api.deezer.com/genre/${genreId}/image?size=xl`
+    : (PODCAST_ART[label] ?? null);
+
+  const [lookedUp, setLookedUp] = useState<string | null>(
+    artist ? (artistArt.get(label) ?? null) : null
+  );
+
+  useEffect(() => {
+    if (!artist || fixedArt || artistArt.get(label) !== undefined) return;
+    let alive = true;
+    fetchArtistArt(label).then((url) => {
+      if (alive) setLookedUp(url);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [artist, label, fixedArt]);
+
+  const art = fixedArt ?? lookedUp;
+
+  return (
+    // The colour sits underneath always, so a failed image degrades to it
+    // rather than to an empty box.
+    <View style={[styles.tasteCard, { backgroundColor: colourFor(label) }]}>
+      {art ? (
+        <Image source={{ uri: art }} style={styles.tasteCardArt} />
+      ) : null}
+      {/* Enough scrim that a busy collage never swallows the label. */}
+      <View style={styles.tasteCardScrim} />
+      <Text style={styles.tasteCardLabel} numberOfLines={2}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function TasteView({ taste }: { taste: Taste | null }) {
-  const sections: { title: string; values: string[] }[] = [
+  const sections: { title: string; values: string[]; artist?: boolean }[] = [
+    { title: "FAVOURITE ARTISTS", values: taste?.favorite_artists ?? [], artist: true },
     { title: "MUSIC", values: taste?.music_genres ?? [] },
     { title: "PODCASTS", values: taste?.podcast_genres ?? [] },
-    { title: "ARTISTS", values: taste?.favorite_artists ?? [] },
   ].filter((s) => s.values.length > 0);
 
   if (sections.length === 0) {
@@ -384,13 +542,17 @@ function TasteView({ taste }: { taste: Taste | null }) {
       {sections.map((s) => (
         <View key={s.title} style={styles.tasteSection}>
           <Text style={styles.tasteTitle}>{s.title}</Text>
-          <View style={styles.chips}>
+          {/* A shelf per section: ten artists scroll sideways instead of
+              pushing everything below them off the screen. */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tasteRow}
+          >
             {s.values.map((v) => (
-              <View key={v} style={styles.chip}>
-                <Text style={styles.chipLabel}>{v}</Text>
-              </View>
+              <TasteCard key={v} label={v} artist={s.artist} />
             ))}
-          </View>
+          </ScrollView>
         </View>
       ))}
     </View>
@@ -489,16 +651,41 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { color: theme.foreground, fontSize: 17, fontWeight: "600" },
   emptyBody: { color: theme.muted, fontSize: 14, textAlign: "center" },
-  taste: { paddingHorizontal: 24, paddingTop: 24, gap: 24 },
-  tasteSection: { gap: 10 },
-  tasteTitle: { color: theme.muted, fontSize: 12, letterSpacing: 1.2, fontWeight: "600" },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: {
-    borderWidth: 1,
-    borderColor: theme.border,
-    borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
+  taste: { paddingTop: 20, gap: 26 },
+  tasteSection: { gap: 12 },
+  tasteTitle: {
+    color: theme.foreground,
+    fontSize: 13,
+    letterSpacing: 1.2,
+    fontWeight: "700",
+    paddingHorizontal: 18,
   },
-  chipLabel: { color: theme.foreground, fontSize: 15 },
+  tasteRow: { gap: 10, paddingHorizontal: 16 },
+  tasteCard: {
+    width: SHELF_CARD_W,
+    height: SHELF_CARD_W / 1.45,
+    borderRadius: 12,
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tasteCardArt: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0 },
+  tasteCardScrim: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.42)",
+  },
+  tasteCardLabel: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+    textAlign: "center",
+    paddingHorizontal: 10,
+    textShadowColor: "rgba(0,0,0,0.55)",
+    textShadowRadius: 8,
+  },
 });

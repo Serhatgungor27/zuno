@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Keyboard,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
@@ -12,7 +14,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { TAB_BAR_CLEARANCE } from "../../components/TabBar";
 import { api } from "../../lib/api";
+import { onTabBarScroll } from "../../lib/tabBarScroll";
 import { theme } from "../../lib/theme";
 import type { SearchResponse, SearchUser } from "../../lib/types";
 
@@ -81,14 +85,21 @@ export default function Search() {
         data={results}
         keyExtractor={(u) => u.spotifyId}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={styles.listContent}
+        scrollEventThrottle={16}
+        onScroll={onTabBarScroll}
+        contentContainerStyle={[styles.listContent, { paddingBottom: TAB_BAR_CLEARANCE }]}
         ListEmptyComponent={
           !searching && searched && !error ? (
             <Text style={styles.empty}>No one found for “{query.trim()}”.</Text>
           ) : null
         }
         renderItem={({ item }) => (
-          <View style={styles.row}>
+          <Pressable
+            onPress={() =>
+              router.push(`/u/${encodeURIComponent(item.username ?? item.spotifyId)}`)
+            }
+            style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+          >
             {item.image ? (
               <Image source={{ uri: item.image }} style={styles.avatar} />
             ) : (
@@ -109,7 +120,8 @@ export default function Search() {
               ) : null}
             </View>
             {item.isLive ? <View style={styles.liveDot} /> : null}
-          </View>
+            <Ionicons name="chevron-forward" size={18} color={theme.muted} />
+          </Pressable>
         )}
       />
     </View>
@@ -151,6 +163,7 @@ const styles = StyleSheet.create({
   name: { color: theme.foreground, fontSize: 16, fontWeight: "600" },
   handle: { color: theme.muted, fontSize: 14 },
   nowPlaying: { color: theme.accent, fontSize: 12 },
+  rowPressed: { opacity: 0.6 },
   liveDot: {
     width: 8,
     height: 8,

@@ -92,3 +92,38 @@ export type Taste = {
   music_genres: string[];
   podcast_genres: string[];
 };
+
+/** GET /api/settings */
+export type SettingsUser = {
+  spotify_id: string;
+  display_name: string | null;
+  username: string | null;
+  image: string | null;
+  bio: string | null;
+  ghost_mode: boolean | null;
+  profile_link: string | null;
+  show_last_active: boolean | null;
+  show_top_stats: boolean | null;
+};
+
+export const MUSIC_GENRES = [
+  "Hip-Hop", "R&B", "Pop", "Rock", "Electronic", "Jazz", "Classical",
+  "Afrobeats", "Latin", "Metal", "Indie", "Soul", "Reggae", "Country",
+  "Dance", "K-Pop",
+] as const;
+
+export const PODCAST_GENRES = [
+  "True Crime", "Comedy", "Tech", "Business", "Health", "Sports", "News",
+  "Science", "History", "Culture", "Politics", "Education", "Self-Help",
+  "Finance", "Entertainment",
+] as const;
+
+/** GET /api/profile/user?username= */
+export type PublicProfile = {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+  avatar_url: string | null;
+  bio: string | null;
+  created_at: string | null;
+};
