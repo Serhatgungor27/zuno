@@ -223,11 +223,11 @@ export async function GET(req: Request) {
       if (takenIds.has(artist.id) || seedNames.has(key) || excludedArtists.has(key)) continue;
       takenIds.add(artist.id);
       picked.push(artist);
-      if (picked.length >= 10) break;
+      if (picked.length >= 12) break;
     }
 
     relatedTracks = (
-      await Promise.all(picked.map((a) => artistTopTracks(a.id, 8)))
+      await Promise.all(picked.map((a) => artistTopTracks(a.id, 10)))
     ).flat();
   }
 
@@ -303,11 +303,12 @@ export async function GET(req: Request) {
     dedupe([...tracks0, ...tracks1, ...tracks2, ...searchTracks], seen)
   );
 
-  // Weighted towards what the listener's taste points at, with charts mixed in
-  // so the feed can still surprise. With no taste on file the charts are all
-  // there is, and slice() just takes everything.
+  // Heavily weighted towards what the listener's taste points at. An earlier
+  // 70/30 split still left a Turkish-rap feed carrying Taylor Swift and The
+  // Clash, which is not what someone means by "music like this". A tenth is
+  // enough to keep the feed from sealing shut.
   const TARGET = 60;
-  const tasteShare = fromTaste.length > 0 ? Math.round(TARGET * 0.7) : 0;
+  const tasteShare = fromTaste.length > 0 ? Math.round(TARGET * 0.9) : 0;
   const all = shuffle([
     ...fromTaste.slice(0, tasteShare),
     ...fromCharts.slice(0, TARGET - Math.min(tasteShare, fromTaste.length)),
