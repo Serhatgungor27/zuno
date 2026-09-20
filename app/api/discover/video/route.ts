@@ -77,11 +77,13 @@ export async function GET(req: Request) {
 
   const key = cacheKey(track, artist);
 
-  const { data: cached } = await supabase
+  const { data: cached, error: readError } = await supabase
     .from("music_video_cache")
     .select("video_url, artwork_url")
     .eq("track_key", key)
     .maybeSingle();
+
+  if (readError) console.error("[discover/video] cache read:", readError);
 
   if (cached) {
     return NextResponse.json({
@@ -117,10 +119,18 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, videoUrl: null, artworkUrl: null });
   }
 
-  // Cache the miss as well as the hit.
-  await supabase
+  // Cache the miss as well as the hit. A cache that silently fails to write
+  // looks identical to one that works, so say so rather than swallowing it.
+  const { error: writeError } = await supabase
     .from("music_video_cache")
     .upsert({ track_key: key, video_url: videoUrl, artwork_url: artworkUrl });
 
-  return NextResponse.json({ ok: true, videoUrl, artworkUrl });
+  if (writeError) console.error("[discover/video] cache write:", writeError);
+
+  return NextResponse.json({
+    ok: true,
+    videoUrl,
+    artworkUrl,
+    ...(writeError ? { cacheError: writeError.message } : {}),
+  });
 }
