@@ -196,6 +196,8 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
       image: string | null;
       trackId?: string;
       url?: string | null;
+      /** A real Spotify link, or null when the source has none. */
+      spotifyUrl?: string | null;
       preview?: string | null;
     }) => {
       setNowPlaying({
@@ -203,7 +205,7 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
         artist: item.artist,
         image: item.image,
         url: null,
-        spotifyUrl: item.url ?? null,
+        spotifyUrl: item.spotifyUrl ?? null,
         historyId: item.trackId,
       });
       try {
@@ -253,6 +255,9 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
           image: f.albumImage,
           trackId: f.trackId ?? undefined,
           url: f.trackUrl,
+          // Vibes and reposts carry the real Spotify link they were played from.
+          spotifyUrl: f.trackUrl,
+          openUrl: null as string | null,
           // Says who, and whether they played it or reposted it.
           meta: `${f.userName} ${f.kind === "repost" ? "reposted" : "vibed"}`,
           preview: null as string | null,
@@ -263,13 +268,17 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
           artist: t.artist,
           image: t.albumImage,
           trackId: t.trackId,
-          url: t.deezerUrl,
+          url: t.sourceUrl,
+          // A chart row has no Spotify link. Leaving this null lets the sheet
+          // fall back to a Spotify search for the track, instead of opening
+          // Deezer or Apple Music from a button that says Spotify.
+          spotifyUrl: null,
           meta: `#${t.position}`,
           // Deezer's global chart ships previews; Apple's country charts do
           // not, so those fall back to the lookup.
           preview: t.previewUrl,
           // A podcast is not a 30-second preview — it opens where it lives.
-          openUrl: t.kind === "podcast" ? t.deezerUrl : null,
+          openUrl: t.kind === "podcast" ? t.sourceUrl : null,
         }));
 
   return (

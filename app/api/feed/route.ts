@@ -241,7 +241,10 @@ export async function GET(req: Request) {
               artist: t.artist?.name ?? "",
               albumImage: t.album?.cover_xl ?? t.album?.cover_big ?? null,
               previewUrl: t.preview ?? null,
-              deezerUrl: t.link ?? null,
+              // Where this row came from: Deezer here, Apple below. It is NOT
+              // a Spotify link, and naming it deezerUrl led the app to open
+              // Apple Music from a button labelled Spotify.
+              sourceUrl: t.link ?? null,
               kind: "song",
             })
           ),
@@ -269,7 +272,7 @@ export async function GET(req: Request) {
                 ? r.artworkUrl100.replace("100x100bb", "600x600bb")
                 : null,
               previewUrl: null,
-              deezerUrl: r.url ?? null,
+              sourceUrl: r.url ?? null,
               kind: kind === "podcasts" ? "podcast" : "song",
             })
           ),

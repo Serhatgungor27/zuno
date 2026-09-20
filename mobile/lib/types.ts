@@ -202,7 +202,12 @@ export type ChartRow = {
   artist: string;
   albumImage: string | null;
   previewUrl: string | null;
-  deezerUrl: string | null;
+  /**
+   * Where the row came from — Deezer for the global chart, Apple Music for a
+   * country chart. Deliberately not called a Spotify url: it isn't one, and
+   * treating it as one is what made the Spotify button open Apple Music.
+   */
+  sourceUrl: string | null;
   kind: "song" | "podcast";
 };
 
