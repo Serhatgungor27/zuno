@@ -128,32 +128,30 @@ export function DiscoverFeed({
   const [activeIndex, setActiveIndex] = useState(0);
   // A scrub must not also scroll the cards underneath it.
   const [scrubbing, setScrubbing] = useState(false);
+  // The active card's music video, if Apple has one. Declared before the
+  // players because the video player is built from it.
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
 
-  // One player, re-pointed as the active card changes. Creating a player per
-  // card would keep 60 of them alive and fight over the audio session.
+  // One audio player, re-pointed as the active card changes. Creating one per
+  // card would keep 60 alive and fight over the audio session.
   //
   // Neither player's status is subscribed to here. Both tick several times a
   // second, and subscribing at this level re-rendered the whole list mid-swipe
   // — which is what made scrolling fight back. Only the active card listens.
   const player = useAudioPlayer(null);
-  const video = useVideoPlayer(null, (p) => {
+  // useVideoPlayer keys the player on the source, so a new url builds a new
+  // player with that source already set and runs this setup on it. That is the
+  // documented shape, and it removes the whole class of bugs that came from
+  // re-pointing one shared player: no stale frame from the previous card, no
+  // play() landing on a still-loading source, no racing swaps to arbitrate.
+  const video = useVideoPlayer(videoUrl, (p) => {
     p.loop = true;
     // Without this the player emits no timeUpdate at all — it defaults to 0,
     // which means "never" — and the progress bar sits at zero through the
     // whole video. Four times a second is smooth enough for a 30s clip.
     p.timeUpdateEventInterval = 0.25;
+    p.play();
   });
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
-  // The track whose video is actually loaded in the player right now. The
-  // VideoView is withheld until this matches the card, because the player is
-  // shared: mounting it earlier shows the PREVIOUS card's video for a moment.
-  const [videoFor, setVideoFor] = useState<string | null>(null);
-  // Swaps are async and a fast scroll starts several. Only the newest may
-  // finish — otherwise a stale one resolves last and plays the wrong track.
-  const swapRef = useRef(0);
-  // The card whose video is loading. Set when a swap starts, consumed when the
-  // player reports it can actually play.
-  const pendingRef = useRef<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -284,61 +282,11 @@ export function DiscoverFeed({
     };
   }, [active, tracks, activeIndex]);
 
-  // Hand playback to whichever player owns this card.
-  useEffect(() => {
-    const trackId = active?.trackId;
-    const turn = ++swapRef.current;
-
-    if (!videoUrl || !trackId) {
-      setVideoFor(null);
-      try {
-        video.pause();
-      } catch {
-        // Nothing loaded yet.
-      }
-      return;
-    }
-
-    // Hide the video while the swap happens. Playback is not touched here —
-    // the effect above owns that, and two places starting players was the bug.
-    setVideoFor(null);
-    pendingRef.current = trackId;
-
-    // replaceAsync resolves when the source is SET, not when it can play.
-    // Playing on that promise called play() on a still-loading player, which
-    // does nothing — so the card went quiet until it was tapped. The
-    // statusChange listener below is what decides the video is ready.
-    video.replaceAsync(videoUrl).then(
-      () => {
-        // If the player is already playable the status may never change, and
-        // then no statusChange event arrives to promote it. Check directly.
-        if (swapRef.current !== turn) return;
-        if (video.status === "readyToPlay" && pendingRef.current === trackId) {
-          pendingRef.current = null;
-          setVideoFor(trackId);
-        }
-      },
-      () => {
-        if (swapRef.current !== turn) return;
-        pendingRef.current = null;
-        setVideoUrl(null);
-        setVideoFor(null);
-      }
-    );
-  }, [videoUrl, active?.trackId, video]);
-
+  // The preview deliberately doesn't start when a video is expected, so a
+  // video that fails to load would leave the card silent. Dropping the url
+  // rebuilds the player empty and hands the sound back to the preview.
   useEventListener(video, "statusChange", ({ status }) => {
-    if (status === "readyToPlay") {
-      const pending = pendingRef.current;
-      if (pending) {
-        pendingRef.current = null;
-        setVideoFor(pending);
-      }
-    } else if (status === "error") {
-      pendingRef.current = null;
-      setVideoUrl(null);
-      setVideoFor(null);
-    }
+    if (status === "error") setVideoUrl(null);
   });
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
@@ -374,31 +322,24 @@ export function DiscoverFeed({
       return;
     }
 
-    if (videoFor) {
+    // The video carries the sound when there is one, so the preview stands
+    // down. Playing both was what let the pause button silence only half.
+    if (videoUrl) {
       quiet(player);
       video.play();
       return;
     }
 
     quiet(video);
-
-    // A video is loading for this card. Starting the preview now means the
-    // song plays, then restarts a second later when the video takes over —
-    // which is worse than a moment of quiet over the cover art.
-    if (videoUrl) {
-      quiet(player);
-      return;
-    }
-
     player.play();
-  }, [isActive, focused, player, video, videoFor, videoUrl, tracks.length]);
+  }, [isActive, focused, player, video, videoUrl, tracks.length]);
 
   // Read the state off the players rather than holding it here — that is the
   // whole point of not subscribing at this level.
   const toggle = useCallback(() => {
     // Pause both regardless of which one is supposed to be playing: if they
     // ever disagree, a tap on pause should still produce silence.
-    if (videoFor) {
+    if (videoUrl) {
       if (video.playing) {
         video.pause();
         player.pause();
@@ -409,7 +350,7 @@ export function DiscoverFeed({
     }
     if (player.playing) player.pause();
     else player.play();
-  }, [player, video, videoFor]);
+  }, [player, video, videoUrl]);
 
   const toggleLike = useCallback(async (track: DiscoverTrack) => {
     const wasLiked = likedRef.current.has(track.trackId);
@@ -490,7 +431,7 @@ export function DiscoverFeed({
         cardH={cardH}
         isActive={index === activeIndex}
         player={player}
-        video={item.trackId === videoFor ? video : null}
+        video={index === activeIndex && videoUrl ? video : null}
         onToggle={toggle}
         liked={likedIds.has(item.trackId)}
         onToggleLike={() => void toggleLike(item)}
@@ -505,7 +446,7 @@ export function DiscoverFeed({
       activeIndex,
       player,
       video,
-      videoFor,
+      videoUrl,
       toggle,
       likedIds,
       toggleLike,
