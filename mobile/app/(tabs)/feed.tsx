@@ -48,6 +48,13 @@ export default function Feed() {
   // True while Discover's progress bar is being dragged; the pager stands down
   // so the drag scrubs instead of changing tab.
   const [scrubbing, setScrubbing] = useState(false);
+
+  // Moving between Following, Discover and Trending brings the bar back out.
+  // It only expanded on route changes before, and the pager never changes
+  // route — these three tabs are one screen with internal state.
+  useEffect(() => {
+    expandTabBar();
+  }, [tab]);
   const [discoverKey, setDiscoverKey] = useState(0);
 
   const pager = useRef<ScrollView>(null);
@@ -188,13 +195,6 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
     setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
   }, []);
   useEffect(() => resetTabBar, []);
-
-  // Moving between Following, Discover and Trending is a fresh start, so the
-  // bar comes back out. It only expanded on route changes before, and the
-  // pager never changes route — these three are one screen.
-  useEffect(() => {
-    expandTabBar();
-  }, [tab]);
 
   const play = useCallback(
     async (item: {

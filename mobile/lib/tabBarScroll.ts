@@ -12,12 +12,26 @@ export const tabBarRetract = new Animated.Value(0);
 
 let lastY = 0;
 let settled = 0;
+/**
+ * Set when the bar is expanded deliberately. The next scroll event only
+ * re-establishes the baseline: returning to a list that is already scrolled
+ * down reports a huge jump from zero, which would otherwise read as a
+ * downward drag and retract the bar again immediately.
+ */
+let rebase = false;
 
 /** Ignores jitter; only a deliberate drag moves the bar. */
 const THRESHOLD = 8;
 
 export function onTabBarScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
   const y = e.nativeEvent.contentOffset.y;
+
+  if (rebase) {
+    rebase = false;
+    lastY = y;
+    return;
+  }
+
   const delta = y - lastY;
   lastY = y;
 
@@ -57,7 +71,7 @@ export function onTabBarScroll(e: NativeSyntheticEvent<NativeScrollEvent>) {
  * retracted would otherwise leave it small on a screen you never scrolled.
  */
 export function expandTabBar() {
-  lastY = 0;
+  rebase = true;
   if (settled === 0) return;
   settled = 0;
   Animated.spring(tabBarRetract, {
@@ -71,5 +85,6 @@ export function expandTabBar() {
 export function resetTabBar() {
   lastY = 0;
   settled = 0;
+  rebase = false;
   tabBarRetract.setValue(0);
 }
