@@ -21,13 +21,13 @@ import { TAB_BAR_CLEARANCE } from "../../components/TabBar";
 import { api } from "../../lib/api";
 import { onTabBarScroll, resetTabBar } from "../../lib/tabBarScroll";
 import { theme } from "../../lib/theme";
-import type { FeedResponse, TrendingTrack, VibeItem } from "../../lib/types";
+import type { FollowingItem, GlobalTrack } from "../../lib/types";
 
 const WIDTH = Dimensions.get("window").width;
 
-type Tab = "vibe" | "discover" | "trending";
+type Tab = "following" | "discover" | "trending";
 const TABS: { key: Tab; label: string }[] = [
-  { key: "vibe", label: "Vibe" },
+  { key: "following", label: "Following" },
   { key: "discover", label: "Discover" },
   { key: "trending", label: "Trending" },
 ];
@@ -66,7 +66,7 @@ export default function Feed() {
         }}
       >
         <View style={styles.page}>
-          <ListFeed tab="vibe" />
+          <ListFeed tab="following" />
         </View>
         <View style={styles.page}>
           {/* Paused when swiped away from, or it keeps playing behind the
@@ -113,10 +113,10 @@ export default function Feed() {
 }
 
 /** Vibe and Trending are both lists of tracks, differing only in source. */
-function ListFeed({ tab }: { tab: "vibe" | "trending" }) {
+function ListFeed({ tab }: { tab: "following" | "trending" }) {
   const insets = useSafeAreaInsets();
-  const [vibes, setVibes] = useState<VibeItem[]>([]);
-  const [trending, setTrending] = useState<TrendingTrack[]>([]);
+  const [following, setFollowing] = useState<FollowingItem[]>([]);
+  const [trending, setTrending] = useState<GlobalTrack[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,11 +126,11 @@ function ListFeed({ tab }: { tab: "vibe" | "trending" }) {
 
   const load = useCallback(async () => {
     try {
-      if (tab === "vibe") {
-        const data = await api<FeedResponse>("/api/feed?type=vibe");
-        setVibes(data.items ?? []);
+      if (tab === "following") {
+        const data = await api<{ items: FollowingItem[] }>("/api/feed?type=following_feed");
+        setFollowing(data.items ?? []);
       } else {
-        const data = await api<{ tracks: TrendingTrack[] }>("/api/feed?type=trending");
+        const data = await api<{ tracks: GlobalTrack[] }>("/api/feed?type=trending_global");
         setTrending(data.tracks ?? []);
       }
       setError(null);
@@ -150,7 +150,14 @@ function ListFeed({ tab }: { tab: "vibe" | "trending" }) {
   useEffect(() => resetTabBar, []);
 
   const play = useCallback(
-    async (item: { title: string; artist: string; image: string | null; trackId?: string; url?: string | null }) => {
+    async (item: {
+      title: string;
+      artist: string;
+      image: string | null;
+      trackId?: string;
+      url?: string | null;
+      preview?: string | null;
+    }) => {
       setNowPlaying({
         title: item.title,
         artist: item.artist,
@@ -160,6 +167,15 @@ function ListFeed({ tab }: { tab: "vibe" | "trending" }) {
         historyId: item.trackId,
       });
       try {
+        if (item.preview) {
+          setNowPlaying((p) => (p ? { ...p, url: item.preview ?? null } : p));
+          player.replace(item.preview);
+          try {
+            player.loop = true;
+          } catch {}
+          player.play();
+          return;
+        }
         const params = new URLSearchParams({ track: item.title, artist: item.artist });
         if (item.trackId) params.set("trackId", item.trackId);
         const res = await api<{ previewUrl: string | null }>(`/api/preview?${params}`);
@@ -189,24 +205,28 @@ function ListFeed({ tab }: { tab: "vibe" | "trending" }) {
   }
 
   const rows =
-    tab === "vibe"
-      ? vibes.map((v) => ({
-          key: v.vibeId,
-          title: v.track,
-          artist: v.artist,
-          image: v.albumImage,
-          trackId: v.trackId,
-          url: v.trackUrl,
-          meta: v.userName + (v.repeatCount > 1 ? ` · ×${v.repeatCount}` : ""),
+    tab === "following"
+      ? following.map((f) => ({
+          key: f.id,
+          title: f.track,
+          artist: f.artist,
+          image: f.albumImage,
+          trackId: f.trackId ?? undefined,
+          url: f.trackUrl,
+          // Says who, and whether they played it or reposted it.
+          meta: `${f.userName} ${f.kind === "repost" ? "reposted" : "vibed"}`,
+          preview: null as string | null,
         }))
-      : trending.map((t, i) => ({
-          key: t.track_id,
-          title: t.track_name,
+      : trending.map((t) => ({
+          key: t.trackId,
+          title: t.name,
           artist: t.artist,
-          image: t.album_image,
-          trackId: t.track_id,
-          url: t.track_url,
-          meta: `#${i + 1} · ${t.count} play${t.count === 1 ? "" : "s"}`,
+          image: t.albumImage,
+          trackId: t.trackId,
+          url: t.deezerUrl,
+          meta: `#${t.position}`,
+          // The chart ships previews, so these skip the lookup entirely.
+          preview: t.previewUrl,
         }));
 
   return (
@@ -235,9 +255,9 @@ function ListFeed({ tab }: { tab: "vibe" | "trending" }) {
         ListEmptyComponent={
           <Text style={styles.empty}>
             {error ??
-              (tab === "vibe"
-                ? "Nothing playing in the last 48 hours."
-                : "No trending tracks in the last 24 hours.")}
+              (tab === "following"
+                ? "Follow some people and their music will show up here."
+                : "Could not load the chart.")}
           </Text>
         }
         renderItem={({ item }) => (

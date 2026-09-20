@@ -152,3 +152,29 @@ export type TrendingTrack = {
   track_url: string | null;
   count: number;
 };
+
+/** GET /api/feed?type=following_feed */
+export type FollowingItem = {
+  id: string;
+  kind: "vibe" | "repost";
+  trackId: string | null;
+  track: string;
+  artist: string;
+  albumImage: string | null;
+  trackUrl: string | null;
+  at: string;
+  userName: string;
+  userImage: string | null;
+  userHandle: string;
+};
+
+/** GET /api/feed?type=trending_global */
+export type GlobalTrack = {
+  position: number;
+  trackId: string;
+  name: string;
+  artist: string;
+  albumImage: string | null;
+  previewUrl: string | null;
+  deezerUrl: string | null;
+};

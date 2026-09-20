@@ -5,6 +5,27 @@ import { resolveViewerId } from "@/lib/identity";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type DeezerChartTrack = {
+  id: number;
+  title: string;
+  link?: string;
+  preview?: string;
+  position?: number;
+  artist?: { name?: string };
+  album?: { cover_xl?: string; cover_big?: string };
+};
+
+type AppleChartRow = {
+  id: string;
+  name: string;
+  artistName?: string;
+  artworkUrl100?: string;
+  url?: string;
+};
+
+const CHART_TTL = 10 * 60 * 1000;
+const chartCache = new Map<string, { at: number; payload: { tracks: unknown[]; title?: string } }>();
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const type = url.searchParams.get("type") ?? "global";
@@ -184,40 +205,79 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, items: merged });
   }
 
-  // Global trending — the worldwide chart, not zuno's own plays. With a
-  // handful of users the internal count is meaningless; this is real content.
-  // Deezer's chart already carries preview URLs, so these play without the
-  // separate /api/preview lookup every other list needs.
+  // Charts — songs or podcasts, worldwide or per country.
+  //
+  // "Global" songs come from Deezer, whose rows carry preview URLs so they
+  // play without the /api/preview lookup. Every country chart comes from
+  // Apple's marketing RSS, which has no previews — those fall back to the
+  // lookup like any other list. Apple has no worldwide storefront, so global
+  // podcasts are not a thing; the app only offers countries there.
   if (type === "trending_global") {
+    const kind = url.searchParams.get("kind") === "podcasts" ? "podcasts" : "songs";
+    const country = (url.searchParams.get("country") ?? "global").toLowerCase();
+    const cacheKey = `${kind}:${country}`;
+
+    const cached = chartCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < CHART_TTL) {
+      return NextResponse.json({ ok: true, ...cached.payload });
+    }
+
     try {
-      const res = await fetch("https://api.deezer.com/chart/0/tracks?limit=50", {
-        cache: "no-store",
-      });
-      if (!res.ok) return NextResponse.json({ ok: true, tracks: [] });
-      const data = await res.json();
-      const tracks = (data?.data ?? []).map(
-        (
-          t: {
-            id: number;
-            title: string;
-            link?: string;
-            preview?: string;
-            position?: number;
-            artist?: { name?: string };
-            album?: { cover_xl?: string; cover_big?: string };
-          },
-          i: number
-        ) => ({
-          position: t.position ?? i + 1,
-          trackId: String(t.id),
-          name: t.title,
-          artist: t.artist?.name ?? "",
-          albumImage: t.album?.cover_xl ?? t.album?.cover_big ?? null,
-          previewUrl: t.preview ?? null,
-          deezerUrl: t.link ?? null,
-        })
-      );
-      return NextResponse.json({ ok: true, tracks });
+      let payload: { tracks: unknown[]; title?: string };
+
+      if (kind === "songs" && country === "global") {
+        const res = await fetch("https://api.deezer.com/chart/0/tracks?limit=50", {
+          cache: "no-store",
+        });
+        if (!res.ok) return NextResponse.json({ ok: true, tracks: [] });
+        const data = await res.json();
+        payload = {
+          title: "Global",
+          tracks: (data?.data ?? []).map(
+            (t: DeezerChartTrack, i: number) => ({
+              position: t.position ?? i + 1,
+              trackId: String(t.id),
+              name: t.title,
+              artist: t.artist?.name ?? "",
+              albumImage: t.album?.cover_xl ?? t.album?.cover_big ?? null,
+              previewUrl: t.preview ?? null,
+              deezerUrl: t.link ?? null,
+              kind: "song",
+            })
+          ),
+        };
+      } else {
+        const path =
+          kind === "podcasts"
+            ? `${country}/podcasts/top/50/podcasts.json`
+            : `${country}/music/most-played/50/songs.json`;
+        const res = await fetch(`https://rss.marketingtools.apple.com/api/v2/${path}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return NextResponse.json({ ok: true, tracks: [] });
+        const data = await res.json();
+        payload = {
+          title: data?.feed?.title ?? "",
+          tracks: (data?.feed?.results ?? []).map(
+            (r: AppleChartRow, i: number) => ({
+              position: i + 1,
+              trackId: String(r.id),
+              name: r.name,
+              artist: r.artistName ?? "",
+              // The RSS only gives 100px art; the CDN resizes by path.
+              albumImage: r.artworkUrl100
+                ? r.artworkUrl100.replace("100x100bb", "600x600bb")
+                : null,
+              previewUrl: null,
+              deezerUrl: r.url ?? null,
+              kind: kind === "podcasts" ? "podcast" : "song",
+            })
+          ),
+        };
+      }
+
+      chartCache.set(cacheKey, { at: Date.now(), payload });
+      return NextResponse.json({ ok: true, ...payload });
     } catch {
       return NextResponse.json({ ok: true, tracks: [] });
     }
