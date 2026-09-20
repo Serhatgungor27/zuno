@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import { FontAwesome, Ionicons } from "@expo/vector-icons";
 import { useAudioPlayerStatus, type AudioPlayer } from "expo-audio";
 import * as Linking from "expo-linking";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -344,7 +344,7 @@ function OpenIn({ track }: { track: NowPlaying }) {
         onPress={openSpotify}
         style={({ pressed }) => [styles.pill, styles.spotify, pressed && styles.pressed]}
       >
-        <Ionicons name="musical-note" size={16} color="#fff" />
+        <FontAwesome name="spotify" size={17} color="#fff" />
         <Text style={styles.pillLabel}>Spotify</Text>
       </Pressable>
 

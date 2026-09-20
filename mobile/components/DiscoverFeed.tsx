@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import { FontAwesome, Ionicons } from "@expo/vector-icons";
 import { useEvent, useEventListener } from "expo";
 import {
   setAudioModeAsync,
@@ -895,7 +895,7 @@ function OpenIn({ track }: { track: DiscoverTrack }) {
         onPress={openSpotify}
         style={({ pressed }) => [styles.pill, styles.spotify, pressed && styles.pressed]}
       >
-        <Ionicons name="musical-note" size={15} color="#fff" />
+        <FontAwesome name="spotify" size={16} color="#fff" />
         <Text style={styles.pillLabel}>Spotify</Text>
       </Pressable>
 
