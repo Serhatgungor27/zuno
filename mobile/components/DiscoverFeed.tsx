@@ -924,9 +924,9 @@ function OpenIn({ track }: { track: DiscoverTrack }) {
         {findingVideo ? (
           <ActivityIndicator color="#fff" size="small" />
         ) : (
-          <Ionicons name="logo-youtube" size={15} color="#fff" />
+          <FontAwesome name="youtube-play" size={16} color="#fff" />
         )}
-        <Text style={styles.pillLabel}>Video</Text>
+        <Text style={styles.pillLabel}>YouTube</Text>
       </Pressable>
     </View>
   );
@@ -998,7 +998,7 @@ const styles = StyleSheet.create({
   },
   spotify: { backgroundColor: "#1db954" },
   apple: { backgroundColor: "#fa243c" },
-  youtube: { backgroundColor: "rgba(255,255,255,0.16)" },
+  youtube: { backgroundColor: "#ff0000" },
   pillLabel: { color: "#fff", fontSize: 13, fontWeight: "600" },
   track: {
     color: theme.foreground,

@@ -374,9 +374,9 @@ function OpenIn({ track }: { track: NowPlaying }) {
         {findingVideo ? (
           <ActivityIndicator color="#fff" size="small" />
         ) : (
-          <Ionicons name="logo-youtube" size={16} color="#fff" />
+          <FontAwesome name="youtube-play" size={17} color="#fff" />
         )}
-        <Text style={styles.pillLabel}>Video</Text>
+        <Text style={styles.pillLabel}>YouTube</Text>
       </Pressable>
     </View>
   );
