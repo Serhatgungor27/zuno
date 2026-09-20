@@ -56,7 +56,8 @@ export default function EditProfile() {
     ])
       .then(([s, t]) => {
         setUser(s.user);
-        setTaste(t);
+        // A profile saved before the ids existed comes back without the map.
+        setTaste(t ? { ...t, favorite_artist_ids: t.favorite_artist_ids ?? {} } : null);
         setBio(s.user.bio ?? "");
         setUsername(s.user.username ?? "");
       })
@@ -83,6 +84,7 @@ export default function EditProfile() {
         method: "POST",
         body: JSON.stringify({
           favorite_artists: next.favorite_artists,
+          favorite_artist_ids: next.favorite_artist_ids,
           music_genres: next.music_genres,
           podcast_genres: next.podcast_genres,
         }),
@@ -132,7 +134,7 @@ export default function EditProfile() {
     };
   }, [artist]);
 
-  const addNamed = (name: string) => {
+  const addNamed = (name: string, deezerId?: number) => {
     if (!taste) return;
     if (taste.favorite_artists.length >= 10) {
       Alert.alert("Limit reached", "You can list up to 10 artists.");
@@ -141,7 +143,13 @@ export default function EditProfile() {
     if (taste.favorite_artists.includes(name)) return;
     setArtist("");
     setMatches([]);
-    void saveTaste({ ...taste, favorite_artists: [...taste.favorite_artists, name] });
+    void saveTaste({
+      ...taste,
+      favorite_artists: [...taste.favorite_artists, name],
+      favorite_artist_ids: deezerId
+        ? { ...taste.favorite_artist_ids, [name]: deezerId }
+        : taste.favorite_artist_ids,
+    });
   };
 
   const addArtist = () => {
@@ -238,7 +246,7 @@ export default function EditProfile() {
               {matches.map((m) => (
                 <Pressable
                   key={m.id}
-                  onPress={() => addNamed(m.name)}
+                  onPress={() => addNamed(m.name, m.id)}
                   style={({ pressed }) => [local.match, pressed && local.matchPressed]}
                 >
                   {m.picture_medium ? (
@@ -263,6 +271,9 @@ export default function EditProfile() {
                     void saveTaste({
                       ...taste,
                       favorite_artists: taste.favorite_artists.filter((x) => x !== a),
+                      favorite_artist_ids: Object.fromEntries(
+                        Object.entries(taste.favorite_artist_ids).filter(([k]) => k !== a)
+                      ),
                     })
                   }
                   style={[styles.chip, styles.chipOn]}

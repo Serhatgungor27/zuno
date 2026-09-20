@@ -206,9 +206,17 @@ export default function UserProfile() {
           {profile.bio ? <Text style={styles.bio}>{profile.bio}</Text> : null}
 
           <View style={styles.stats}>
-            <Stat value={follow?.followingCount ?? 0} label="Following" />
+            <Stat
+              value={follow?.followingCount ?? 0}
+              label="Following"
+              onPress={() => router.push(`/follows?user=${encodeURIComponent(username)}&type=following` as never)}
+            />
             <View style={styles.statDivider} />
-            <Stat value={follow?.followerCount ?? 0} label="Followers" />
+            <Stat
+              value={follow?.followerCount ?? 0}
+              label="Followers"
+              onPress={() => router.push(`/follows?user=${encodeURIComponent(username)}&type=followers` as never)}
+            />
             <View style={styles.statDivider} />
             <Stat value={vibes.length} label="Vibes" />
           </View>
@@ -277,12 +285,24 @@ export default function UserProfile() {
   );
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
+function Stat({
+  value,
+  label,
+  onPress,
+}: {
+  value: number;
+  label: string;
+  onPress?: () => void;
+}) {
   return (
-    <View style={styles.stat}>
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => [styles.stat, pressed && onPress ? styles.pressed : null]}
+    >
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </Pressable>
   );
 }
 

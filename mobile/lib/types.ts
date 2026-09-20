@@ -46,6 +46,15 @@ export type SearchUser = {
 
 export type SearchResponse = { ok: boolean; users: SearchUser[] };
 
+/** A row in the follower/following list — no presence, unlike search. */
+export type FollowUser = {
+  id: string;
+  spotifyId: string;
+  name: string;
+  username: string | null;
+  image: string | null;
+};
+
 /** GET /api/user — the Spotify-side account (keyed on spotify_id). */
 export type ZunoUser = {
   spotify_id: string;
@@ -89,6 +98,12 @@ export type Repost = {
 export type Taste = {
   ok: boolean;
   favorite_artists: string[];
+  /**
+   * Artist name -> Deezer artist id, for the ones picked from the search list.
+   * Names alone are ambiguous — two artists can share one — so this is what
+   * makes the picture match the artist you actually chose.
+   */
+  favorite_artist_ids: Record<string, number>;
   music_genres: string[];
   podcast_genres: string[];
 };

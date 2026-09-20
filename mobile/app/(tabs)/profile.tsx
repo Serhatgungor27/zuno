@@ -200,9 +200,17 @@ export default function Profile() {
         {handle ? <Text style={styles.handle}>@{handle}</Text> : null}
 
         <View style={styles.stats}>
-          <Stat value={follow?.followingCount ?? 0} label="Following" />
+          <Stat
+            value={follow?.followingCount ?? 0}
+            label="Following"
+            onPress={handle ? () => router.push(`/follows?user=${encodeURIComponent(handle)}&type=following` as never) : undefined}
+          />
           <View style={styles.statDivider} />
-          <Stat value={follow?.followerCount ?? 0} label="Followers" />
+          <Stat
+            value={follow?.followerCount ?? 0}
+            label="Followers"
+            onPress={handle ? () => router.push(`/follows?user=${encodeURIComponent(handle)}&type=followers` as never) : undefined}
+          />
           <View style={styles.statDivider} />
           <Stat value={vibes.length} label="Vibes" />
         </View>
@@ -279,12 +287,24 @@ export default function Profile() {
   );
 }
 
-function Stat({ value, label }: { value: number; label: string }) {
+function Stat({
+  value,
+  label,
+  onPress,
+}: {
+  value: number;
+  label: string;
+  onPress?: () => void;
+}) {
   return (
-    <View style={styles.stat}>
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
+      style={({ pressed }) => [styles.stat, pressed && onPress ? styles.pressed : null]}
+    >
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -455,19 +475,36 @@ const CARD_COLOURS = [
  */
 const artistArt = new Map<string, string | null>();
 
-async function fetchArtistArt(name: string): Promise<string | null> {
-  const cached = artistArt.get(name);
+async function fetchArtistArt(
+  name: string,
+  deezerId?: number
+): Promise<string | null> {
+  const key = deezerId ? `id:${deezerId}` : name;
+  const cached = artistArt.get(key);
   if (cached !== undefined) return cached;
   try {
+    // An id is exact: it is the artist the user picked out of the search list.
+    // Without one, fall back to searching the name and take the artist with
+    // the most fans, since a name on its own can belong to several people.
     const res = await fetch(
-      `https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=1`
+      deezerId
+        ? `https://api.deezer.com/artist/${deezerId}`
+        : `https://api.deezer.com/search/artist?q=${encodeURIComponent(name)}&limit=5`
     );
-    const data = (await res.json()) as { data?: { picture_xl?: string }[] };
-    const url = data.data?.[0]?.picture_xl ?? null;
-    artistArt.set(name, url);
+    const json = (await res.json()) as
+      | { picture_xl?: string }
+      | { data?: { picture_xl?: string; nb_fan?: number }[] };
+
+    const url = deezerId
+      ? ((json as { picture_xl?: string }).picture_xl ?? null)
+      : ((json as { data?: { picture_xl?: string; nb_fan?: number }[] }).data ?? [])
+          .slice()
+          .sort((a, b) => (b.nb_fan ?? 0) - (a.nb_fan ?? 0))[0]?.picture_xl ?? null;
+
+    artistArt.set(key, url);
     return url;
   } catch {
-    artistArt.set(name, null);
+    artistArt.set(key, null);
     return null;
   }
 }
@@ -478,27 +515,36 @@ function colourFor(name: string): string {
   return CARD_COLOURS[hash % CARD_COLOURS.length];
 }
 
-function TasteCard({ label, artist }: { label: string; artist?: boolean }) {
+function TasteCard({
+  label,
+  artist,
+  deezerId,
+}: {
+  label: string;
+  artist?: boolean;
+  deezerId?: number;
+}) {
   const genreId = DEEZER_GENRE[label];
   const fixedArt = genreId
     // The endpoint 302s to the CDN; Image follows redirects.
     ? `https://api.deezer.com/genre/${genreId}/image?size=xl`
     : (PODCAST_ART[label] ?? null);
 
+  const cacheKey = deezerId ? `id:${deezerId}` : label;
   const [lookedUp, setLookedUp] = useState<string | null>(
-    artist ? (artistArt.get(label) ?? null) : null
+    artist ? (artistArt.get(cacheKey) ?? null) : null
   );
 
   useEffect(() => {
-    if (!artist || fixedArt || artistArt.get(label) !== undefined) return;
+    if (!artist || fixedArt || artistArt.get(cacheKey) !== undefined) return;
     let alive = true;
-    fetchArtistArt(label).then((url) => {
+    fetchArtistArt(label, deezerId).then((url) => {
       if (alive) setLookedUp(url);
     });
     return () => {
       alive = false;
     };
-  }, [artist, label, fixedArt]);
+  }, [artist, label, fixedArt, deezerId, cacheKey]);
 
   const art = fixedArt ?? lookedUp;
 
@@ -550,7 +596,12 @@ function TasteView({ taste }: { taste: Taste | null }) {
             contentContainerStyle={styles.tasteRow}
           >
             {s.values.map((v) => (
-              <TasteCard key={v} label={v} artist={s.artist} />
+              <TasteCard
+                key={v}
+                label={v}
+                artist={s.artist}
+                deezerId={taste?.favorite_artist_ids?.[v]}
+              />
             ))}
           </ScrollView>
         </View>

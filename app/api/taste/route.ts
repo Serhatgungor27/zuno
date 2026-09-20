@@ -22,13 +22,18 @@ export async function GET(req: Request) {
   const db = adminDb();
   const { data } = await db
     .from("profiles")
-    .select("favorite_artists, music_genres, podcast_genres")
+    // Select the whole row rather than naming columns: favorite_artist_ids is
+    // new, and naming a column the migration hasn't added yet fails the query
+    // outright and would return an empty taste profile.
+    .select("*")
     .eq("id", user.id)
     .single();
 
   return NextResponse.json({
     ok: true,
     favorite_artists: data?.favorite_artists ?? [],
+    // name -> Deezer artist id, for the artists picked from the search list.
+    favorite_artist_ids: data?.favorite_artist_ids ?? {},
     music_genres: data?.music_genres ?? [],
     podcast_genres: data?.podcast_genres ?? [],
   });
@@ -40,14 +45,31 @@ export async function POST(req: Request) {
   if (!auth) return NextResponse.json({ ok: false }, { status: 401 });
   const { user } = auth;
 
-  const { favorite_artists, music_genres, podcast_genres } = await req.json();
+  const { favorite_artists, favorite_artist_ids, music_genres, podcast_genres } =
+    await req.json();
 
   const db = adminDb();
-  await db.from("profiles").update({
+  const base = {
     favorite_artists: favorite_artists ?? [],
     music_genres: music_genres ?? [],
     podcast_genres: podcast_genres ?? [],
-  }).eq("id", user.id);
+  };
+
+  // The web settings page doesn't know about ids and omits the field; treat
+  // that as "leave them alone" rather than clearing what the app recorded.
+  const payload =
+    favorite_artist_ids === undefined
+      ? base
+      : { ...base, favorite_artist_ids };
+
+  const { error } = await db.from("profiles").update(payload).eq("id", user.id);
+
+  // 42703/PGRST204 mean the migration in supabase/migrations hasn't been run
+  // yet. Saving taste matters more than keeping the ids, so drop them rather
+  // than failing the request.
+  if (error && (error.code === "42703" || error.code === "PGRST204")) {
+    await db.from("profiles").update(base).eq("id", user.id);
+  }
 
   return NextResponse.json({ ok: true });
 }

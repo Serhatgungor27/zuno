@@ -23,7 +23,7 @@ import { Scrubber } from "./Scrubber";
 import { TAB_BAR_CLEARANCE } from "./TabBar";
 import { api } from "../lib/api";
 import { theme } from "../lib/theme";
-import type { DiscoverResponse, DiscoverTrack } from "../lib/types";
+import type { DiscoverResponse, DiscoverTrack, Taste } from "../lib/types";
 
 const { height: SCREEN_H } = Dimensions.get("window");
 
@@ -41,6 +41,9 @@ export function DiscoverFeed({
   const listRef = useRef<FlatList<DiscoverTrack>>(null);
   const pageRef = useRef(0);
   const [tracks, setTracks] = useState<DiscoverTrack[]>([]);
+  // The route already personalises on genres and artists; the app just never
+  // told it anything about you.
+  const [taste, setTaste] = useState<Taste | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -49,6 +52,12 @@ export function DiscoverFeed({
   // card would keep 60 of them alive and fight over the audio session.
   const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
+
+  useEffect(() => {
+    api<Taste>("/api/taste")
+      .then(setTaste)
+      .catch(() => setTaste(null));
+  }, []);
 
   useEffect(() => {
     // Music has to keep playing when the ringer switch is off, or the feed is
@@ -63,7 +72,14 @@ export function DiscoverFeed({
       pageRef.current = (pageRef.current + 1 + Math.floor(Math.random() * (PAGES - 1))) % PAGES;
     }
     setLoading(true);
-    api<DiscoverResponse>(`/api/discover?page=${pageRef.current}`)
+    const params = new URLSearchParams({ page: String(pageRef.current) });
+    if (taste?.music_genres?.length) {
+      params.set("genres", taste.music_genres.join(","));
+    }
+    if (taste?.favorite_artists?.length) {
+      params.set("artists", taste.favorite_artists.slice(0, 3).join(","));
+    }
+    api<DiscoverResponse>(`/api/discover?${params}`)
       .then((data) => {
         setTracks((data.tracks ?? []).filter((t) => t.previewUrl));
         setActiveIndex(0);
@@ -74,7 +90,7 @@ export function DiscoverFeed({
         setError(e instanceof Error ? e.message : "Could not load Discover.")
       )
       .finally(() => setLoading(false));
-  }, [refreshKey]);
+  }, [refreshKey, taste]);
 
   const active = tracks[activeIndex];
 
