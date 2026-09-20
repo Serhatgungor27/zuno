@@ -184,6 +184,45 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, items: merged });
   }
 
+  // Global trending — the worldwide chart, not zuno's own plays. With a
+  // handful of users the internal count is meaningless; this is real content.
+  // Deezer's chart already carries preview URLs, so these play without the
+  // separate /api/preview lookup every other list needs.
+  if (type === "trending_global") {
+    try {
+      const res = await fetch("https://api.deezer.com/chart/0/tracks?limit=50", {
+        cache: "no-store",
+      });
+      if (!res.ok) return NextResponse.json({ ok: true, tracks: [] });
+      const data = await res.json();
+      const tracks = (data?.data ?? []).map(
+        (
+          t: {
+            id: number;
+            title: string;
+            link?: string;
+            preview?: string;
+            position?: number;
+            artist?: { name?: string };
+            album?: { cover_xl?: string; cover_big?: string };
+          },
+          i: number
+        ) => ({
+          position: t.position ?? i + 1,
+          trackId: String(t.id),
+          name: t.title,
+          artist: t.artist?.name ?? "",
+          albumImage: t.album?.cover_xl ?? t.album?.cover_big ?? null,
+          previewUrl: t.preview ?? null,
+          deezerUrl: t.link ?? null,
+        })
+      );
+      return NextResponse.json({ ok: true, tracks });
+    } catch {
+      return NextResponse.json({ ok: true, tracks: [] });
+    }
+  }
+
   // Trending songs — most played in last 24 hours
   if (type === "trending") {
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
