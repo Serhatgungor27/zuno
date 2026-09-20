@@ -525,6 +525,12 @@ export function DiscoverFeed({
         index,
       })}
       scrollEnabled={!scrubbing}
+      // Without this, rows keep whatever props they were last rendered with:
+      // VirtualizedList only re-renders cells when `data` or `extraData`
+      // changes. Cards were holding the previous card's video — hence a blur
+      // left on a track that has none. renderItem is the right value to pass
+      // because its identity already changes exactly when row state does.
+      extraData={renderItem}
       windowSize={3}
       maxToRenderPerBatch={2}
       initialNumToRender={2}
