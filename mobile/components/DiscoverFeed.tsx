@@ -9,7 +9,7 @@ import {
 import * as Linking from "expo-linking";
 import { useFocusEffect } from "expo-router";
 import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Dimensions,
@@ -349,25 +349,35 @@ export function DiscoverFeed({
     player.play();
   }, [isActive, focused, player, video, videoUrl, tracks.length]);
 
+  // Read through refs so this callback keeps one identity for the life of the
+  // feed. It is handed to every card, and a new function each render would
+  // re-render all of them on every swipe.
+  const videoUrlRef = useRef<string | null>(null);
+  videoUrlRef.current = videoUrl;
+  const videoPlayerRef = useRef(video);
+  videoPlayerRef.current = video;
+
   // Read the state off the players rather than holding it here — that is the
   // whole point of not subscribing at this level.
   const toggle = useCallback(() => {
     // Pause both regardless of which one is supposed to be playing: if they
     // ever disagree, a tap on pause should still produce silence.
-    if (videoUrl) {
-      if (video.playing) {
-        video.pause();
+    const v = videoPlayerRef.current;
+    if (videoUrlRef.current) {
+      if (v.playing) {
+        v.pause();
         player.pause();
       } else {
-        video.play();
+        v.play();
       }
       return;
     }
     if (player.playing) player.pause();
     else player.play();
-  }, [player, video, videoUrl]);
+  }, [player]);
 
-  const toggleLike = useCallback(async (track: DiscoverTrack) => {
+  const toggleLike = useCallback((track: DiscoverTrack) => {
+    void (async () => {
     const wasLiked = likedRef.current.has(track.trackId);
 
     // Optimistic — a heart that waits on a round trip feels broken.
@@ -398,6 +408,7 @@ export function DiscoverFeed({
       likedRef.current = back;
       setLikedIds(back);
     }
+    })();
   }, []);
 
   /**
@@ -449,8 +460,8 @@ export function DiscoverFeed({
         video={index === activeIndex && videoUrl ? video : null}
         onToggle={toggle}
         liked={likedIds.has(item.trackId)}
-        onToggleLike={() => void toggleLike(item)}
-        onDislike={() => dislike(item)}
+        onToggleLike={toggleLike}
+        onDislike={dislike}
         reposted={repostedIds.has(item.trackId)}
         onReposted={onReposted}
         onScrub={handleScrub}
@@ -501,8 +512,10 @@ export function DiscoverFeed({
         const h = e.nativeEvent.layout.height;
         if (h > 0 && Math.abs(h - cardH) > 1) setCardH(h);
       }}
-      snapToInterval={cardH}
-      snapToAlignment="start"
+      // pagingEnabled alone. It and snapToInterval are two different snapping
+      // mechanisms, and setting both makes them fight — which is what the
+      // scroll felt like. The card is measured to the viewport, so paging
+      // lands exactly right on its own.
       decelerationRate="fast"
       viewabilityConfig={viewabilityConfig}
       onViewableItemsChanged={onViewableItemsChanged}
@@ -513,15 +526,14 @@ export function DiscoverFeed({
       })}
       scrollEnabled={!scrubbing}
       windowSize={3}
-      maxToRenderPerBatch={3}
+      maxToRenderPerBatch={2}
       initialNumToRender={2}
-      removeClippedSubviews
       renderItem={renderItem}
     />
   );
 }
 
-function Card({
+const Card = memo(function Card({
   track,
   cardH,
   isActive,
@@ -543,8 +555,9 @@ function Card({
   video: VideoPlayer | null;
   onToggle: () => void;
   liked: boolean;
-  onToggleLike: () => void;
-  onDislike: () => void;
+  /** Takes the track, so the feed can hand down one stable function. */
+  onToggleLike: (track: DiscoverTrack) => void;
+  onDislike: (track: DiscoverTrack) => void;
   reposted: boolean;
   onReposted: (trackId: string, next: boolean) => void;
   onScrub: (scrubbing: boolean) => void;
@@ -591,8 +604,8 @@ function Card({
       <Rail
         track={track}
         liked={liked}
-        onToggleLike={onToggleLike}
-        onDislike={onDislike}
+        onToggleLike={() => onToggleLike(track)}
+        onDislike={() => onDislike(track)}
         reposted={reposted}
         onReposted={onReposted}
         bottom={TAB_BAR_CLEARANCE + 96}
@@ -623,7 +636,7 @@ function Card({
       </View>
     </Pressable>
   );
-}
+});
 
 /* ------------------------------------------------------------------ *
  * Playback state lives in these four, never in the feed. Each exists  *
