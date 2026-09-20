@@ -565,10 +565,23 @@ const Card = memo(function Card({
   return (
     <Pressable onPress={onToggle} style={[styles.card, { height: cardH }]}>
       {track.albumImage ? (
-        <Image source={{ uri: track.albumImage }} style={styles.art} />
+        <Image
+          source={{ uri: track.albumImage }}
+          style={styles.art}
+          // Behind a letterboxed video the cover is a backdrop rather than the
+          // subject. Blurring it fills the bars above and below without
+          // competing with the video, and keeps the seam from reading as a
+          // hard edge. Left sharp when the cover IS the card.
+          blurRadius={video ? 30 : 0}
+        />
       ) : (
         <View style={[styles.art, styles.artFallback]} />
       )}
+
+      {/* Under the video, not over it. This darkens the backdrop and keeps
+          the title legible on cards with no video — but it was sitting on top
+          of the VideoView, dimming the video itself by nearly 40%. */}
+      <View style={[styles.scrim, video ? styles.scrimUnderVideo : null]} />
 
       {/* The video sits over the artwork, which stays underneath as the
           fallback for the half of tracks Apple has no video for. Its own
@@ -580,16 +593,13 @@ const Card = memo(function Card({
           style={styles.art}
           // "cover" crops a 16:9 music video into a portrait card, leaving
           // only a zoomed strip of the middle. "contain" shows the whole
-          // frame, centred, with the cover art filling the card behind it.
+          // frame, centred, over the blurred cover art.
           contentFit="contain"
           nativeControls={false}
           allowsPictureInPicture={false}
           fullscreenOptions={{ enable: false }}
         />
       ) : null}
-
-      {/* Keeps the title legible over bright artwork. */}
-      <View style={styles.scrim} />
 
       {/* Only the active card subscribes to playback state. */}
       {isActive ? (
@@ -898,6 +908,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: "rgba(0,0,0,0.38)",
   },
+  scrimUnderVideo: { backgroundColor: "rgba(0,0,0,0.55)" },
   glyph: {
     position: "absolute",
     alignSelf: "center",
