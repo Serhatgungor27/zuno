@@ -1,15 +1,16 @@
-import { useAudioPlayerStatus, type AudioPlayer } from "expo-audio";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Animated, PanResponder, StyleSheet, View } from "react-native";
 
 import { theme } from "../lib/theme";
 
 export function Scrubber({
-  player,
+  onSeek,
   progress,
   duration,
 }: {
-  player: AudioPlayer;
+  /** Seconds to seek to. Takes a callback rather than a player so the same
+   *  bar can drive audio previews and music videos alike. */
+  onSeek: (seconds: number) => void;
   progress: number;
   duration: number;
 }) {
@@ -86,14 +87,14 @@ export function Scrubber({
           ]).start();
           if (durationRef.current > 0) {
             try {
-              player.seekTo(scrubPos.current * durationRef.current);
+              onSeek(scrubPos.current * durationRef.current);
             } catch {
               // A failed seek should not strand the bar under the thumb.
             }
           }
         },
       }),
-    [knobScale, barScale, player, setFromX]
+    [knobScale, barScale, onSeek, setFromX]
   );
 
   return (

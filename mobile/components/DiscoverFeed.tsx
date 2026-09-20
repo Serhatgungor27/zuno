@@ -1,6 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { useFocusEffect } from "expo-router";
+import { useEvent } from "expo";
+import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
 import {
   setAudioModeAsync,
   useAudioPlayer,
@@ -35,6 +37,27 @@ const PAGES = 5;
 type Prefs = { genres: string[]; artists: string[] };
 type LikedResponse = { tracks: { trackId: string; artist: string }[] };
 type RepostResponse = { reposts: { history_id: string | null }[] };
+type VideoResponse = { videoUrl: string | null };
+
+/**
+ * Music videos, looked up once per track and kept for the session. Roughly
+ * half of Discover's tracks have one; the rest fall back to the artwork.
+ */
+const videoUrls = new Map<string, string | null>();
+
+async function fetchVideo(track: DiscoverTrack): Promise<string | null> {
+  const cached = videoUrls.get(track.trackId);
+  if (cached !== undefined) return cached;
+  try {
+    const params = new URLSearchParams({ track: track.name, artist: track.artist });
+    const res = await api<VideoResponse>(`/api/discover/video?${params}`);
+    videoUrls.set(track.trackId, res.videoUrl);
+    return res.videoUrl;
+  } catch {
+    videoUrls.set(track.trackId, null);
+    return null;
+  }
+}
 
 /**
  * Analytics for what a card actually got: a like, a hand-off to Spotify, a
@@ -85,6 +108,24 @@ export function DiscoverFeed({
   // card would keep 60 of them alive and fight over the audio session.
   const player = useAudioPlayer(null);
   const status = useAudioPlayerStatus(player);
+
+  // A second player for the music video. When a track has one it carries the
+  // sound as well as the picture, so the audio preview steps aside — a video
+  // of one part of the song under the audio of another looks broken.
+  const video = useVideoPlayer(null, (p) => {
+    p.loop = true;
+  });
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+
+  // expo-video reports state through events rather than a status hook.
+  const { isPlaying: videoPlaying } = useEvent(video, "playingChange", {
+    isPlaying: video.playing,
+  });
+  // timeUpdate carries currentTime only; duration is a player property that
+  // fills in once the source loads, so it's read directly each render.
+  const timeUpdate = useEvent(video, "timeUpdate");
+  const videoTime = timeUpdate?.currentTime ?? video.currentTime ?? 0;
+  const videoDuration = video.duration ?? 0;
 
   useEffect(() => {
     let alive = true;
@@ -189,6 +230,46 @@ export function DiscoverFeed({
     }
   }, [active?.previewUrl, player]);
 
+  // Ask Apple whether this track has a music video. The audio preview is
+  // already playing by now, so a slow answer costs nothing — the video takes
+  // over when and if it arrives.
+  useEffect(() => {
+    if (!active) {
+      setVideoUrl(null);
+      return;
+    }
+    let alive = true;
+    setVideoUrl(videoUrls.get(active.trackId) ?? null);
+    fetchVideo(active).then((url) => {
+      if (alive) setVideoUrl(url);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [active]);
+
+  // Hand playback to whichever player owns this card.
+  useEffect(() => {
+    if (videoUrl) {
+      player.pause();
+      video.replaceAsync(videoUrl).then(
+        () => video.play(),
+        () => {
+          // The video failed to load — put the audio preview back rather than
+          // leaving the card silent.
+          setVideoUrl(null);
+          player.play();
+        }
+      );
+    } else {
+      try {
+        video.pause();
+      } catch {
+        // Nothing loaded yet.
+      }
+    }
+  }, [videoUrl, video, player]);
+
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(
     ({ viewableItems }: { viewableItems: ViewToken[] }) => {
@@ -202,15 +283,26 @@ export function DiscoverFeed({
   useEffect(() => {
     if (!isActive || !focused) {
       player.pause();
+      try {
+        video.pause();
+      } catch {
+        // Nothing loaded yet.
+      }
     } else if (tracks.length > 0) {
-      player.play();
+      if (videoUrl) video.play();
+      else player.play();
     }
-  }, [isActive, focused, player, tracks.length]);
+  }, [isActive, focused, player, video, videoUrl, tracks.length]);
 
   const toggle = useCallback(() => {
+    if (videoUrl) {
+      if (video.playing) video.pause();
+      else video.play();
+      return;
+    }
     if (status.playing) player.pause();
     else player.play();
-  }, [status.playing, player]);
+  }, [status.playing, player, video, videoUrl]);
 
   const toggleLike = useCallback(async (track: DiscoverTrack) => {
     const wasLiked = likedRef.current.has(track.trackId);
@@ -286,10 +378,22 @@ export function DiscoverFeed({
         <Card
           track={item}
           isActive={index === activeIndex}
-          isPlaying={status.playing}
-          progress={status.duration > 0 ? status.currentTime / status.duration : 0}
-          duration={status.duration}
-          player={player}
+          isPlaying={videoUrl ? videoPlaying : status.playing}
+          progress={
+            videoUrl
+              ? videoDuration > 0
+                ? videoTime / videoDuration
+                : 0
+              : status.duration > 0
+                ? status.currentTime / status.duration
+                : 0
+          }
+          duration={videoUrl ? videoDuration : status.duration}
+          onSeek={(t) => {
+            if (videoUrl) video.currentTime = t;
+            else player.seekTo(t);
+          }}
+          video={index === activeIndex && videoUrl ? video : null}
           onToggle={toggle}
           liked={likedIds.has(item.trackId)}
           onToggleLike={() => void toggleLike(item)}
@@ -314,7 +418,8 @@ function Card({
   isPlaying,
   progress,
   duration,
-  player,
+  onSeek,
+  video,
   onToggle,
   liked,
   onToggleLike,
@@ -326,7 +431,9 @@ function Card({
   isPlaying: boolean;
   progress: number;
   duration: number;
-  player: AudioPlayer;
+  onSeek: (seconds: number) => void;
+  /** The shared video player, but only for the card that currently owns it. */
+  video: VideoPlayer | null;
   onToggle: () => void;
   liked: boolean;
   onToggleLike: () => void;
@@ -340,6 +447,21 @@ function Card({
       ) : (
         <View style={[styles.art, styles.artFallback]} />
       )}
+
+      {/* The video sits over the artwork, which stays underneath as the
+          fallback for the half of tracks Apple has no video for. Its own
+          controls are off: this is a background, and the card's play/pause
+          tap and scrubber drive it. */}
+      {video ? (
+        <VideoView
+          player={video}
+          style={styles.art}
+          contentFit="cover"
+          nativeControls={false}
+          allowsPictureInPicture={false}
+          fullscreenOptions={{ enable: false }}
+        />
+      ) : null}
 
       {/* Keeps the title legible over bright artwork. */}
       <View style={styles.scrim} />
@@ -373,7 +495,7 @@ function Card({
 
         <OpenIn track={track} />
 
-        <Scrubber player={player} progress={progress} duration={duration} />
+        <Scrubber onSeek={onSeek} progress={progress} duration={duration} />
       </View>
     </Pressable>
   );

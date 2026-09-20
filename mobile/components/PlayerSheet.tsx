@@ -181,7 +181,11 @@ export function PlayerSheet({
                 </Text>
               </View>
 
-              <Scrubber player={player} progress={progress} duration={status.duration} />
+              <Scrubber
+                onSeek={(t) => player.seekTo(t)}
+                progress={progress}
+                duration={status.duration}
+              />
 
               <OpenIn track={track} />
             </View>
