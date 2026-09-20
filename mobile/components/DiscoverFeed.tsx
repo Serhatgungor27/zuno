@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
+import { useFocusEffect } from "expo-router";
 import {
   setAudioModeAsync,
   useAudioPlayer,
@@ -73,6 +74,10 @@ export function DiscoverFeed({
   // reposted the button would offer to repost something it would delete.
   const [repostedIds, setRepostedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  // `isActive` only tracks the pager. Leaving the feed for another tab doesn't
+  // unmount this screen, so without watching focus the preview keeps playing
+  // over whatever you opened next.
+  const [focused, setFocused] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
 
@@ -115,6 +120,13 @@ export function DiscoverFeed({
       alive = false;
     };
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, [])
+  );
 
   useEffect(() => {
     // Music has to keep playing when the ringer switch is off, or the feed is
@@ -185,14 +197,15 @@ export function DiscoverFeed({
     }
   ).current;
 
-  // Silence it the moment the pager moves away; resume when it comes back.
+  // Silence it the moment the pager moves away or the screen loses focus;
+  // resume when it comes back.
   useEffect(() => {
-    if (!isActive) {
+    if (!isActive || !focused) {
       player.pause();
     } else if (tracks.length > 0) {
       player.play();
     }
-  }, [isActive, player, tracks.length]);
+  }, [isActive, focused, player, tracks.length]);
 
   const toggle = useCallback(() => {
     if (status.playing) player.pause();

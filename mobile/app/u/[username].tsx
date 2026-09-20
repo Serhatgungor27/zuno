@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
-import { router, useLocalSearchParams } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -50,6 +50,21 @@ export default function UserProfile() {
   const [busy, setBusy] = useState(false);
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const player = useAudioPlayer(null);
+
+  // Leaving this screen for another tab doesn't unmount it, so the preview
+  // would otherwise keep playing over whatever you opened next.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        try {
+          player.pause();
+        } catch {
+          // Player already released — nothing to silence.
+        }
+      };
+    }, [player])
+  );
+
 
   const load = useCallback(async () => {
     if (!username) return;
