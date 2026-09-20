@@ -26,6 +26,7 @@ import {
 import { Scrubber } from "./Scrubber";
 import { TAB_BAR_CLEARANCE } from "./TabBar";
 import { api } from "../lib/api";
+import { onTabBarScroll } from "../lib/tabBarScroll";
 import { theme } from "../lib/theme";
 import type { DiscoverResponse, DiscoverTrack, Taste } from "../lib/types";
 
@@ -507,6 +508,10 @@ export function DiscoverFeed({
       keyExtractor={(t) => t.trackId}
       pagingEnabled
       showsVerticalScrollIndicator={false}
+      // Every other scrollable in the app retracts the tab bar; this one was
+      // the only one that never reported its scrolling.
+      onScroll={onTabBarScroll}
+      scrollEventThrottle={16}
       // Measured, never assumed. See the note on WINDOW_H.
       onLayout={(e) => {
         const h = e.nativeEvent.layout.height;
