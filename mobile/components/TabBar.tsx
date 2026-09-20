@@ -1,10 +1,17 @@
-import { Ionicons } from "@expo/vector-icons";
+import { BlurView } from "expo-blur";
 import { Pressable, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import {
+  ActivityIcon,
+  DiscoverIcon,
+  FeedIcon,
+  ProfileIcon,
+  SearchIcon,
+} from "./TabIcons";
 import { theme } from "../lib/theme";
 
-type IconName = keyof typeof Ionicons.glyphMap;
+type IconProps = { size?: number; color: string; filled?: boolean };
 
 /**
  * Minimal shape of what the navigator hands a custom tab bar. Declared here
@@ -23,12 +30,12 @@ type TabBarProps = {
   };
 };
 
-const ICONS: Record<string, { idle: IconName; active: IconName }> = {
-  feed: { idle: "play-circle-outline", active: "play-circle" },
-  discover: { idle: "compass-outline", active: "compass" },
-  search: { idle: "search-outline", active: "search" },
-  notifications: { idle: "heart-outline", active: "heart" },
-  profile: { idle: "person-outline", active: "person" },
+const ICONS: Record<string, (p: IconProps) => React.ReactElement> = {
+  feed: FeedIcon,
+  discover: DiscoverIcon,
+  search: SearchIcon,
+  notifications: ActivityIcon,
+  profile: ProfileIcon,
 };
 
 /**
@@ -45,11 +52,13 @@ export function TabBar({ state, navigation }: TabBarProps) {
       pointerEvents="box-none"
       style={[styles.wrap, { paddingBottom: insets.bottom > 0 ? insets.bottom - 4 : 14 }]}
     >
-      <View style={styles.capsule}>
+      {/* Real frosted glass, not a flat translucent fill — content moving
+          underneath shows through, which is what makes Instagram's blend. */}
+      <BlurView intensity={60} tint="dark" style={styles.capsule}>
         {state.routes.map((route, index) => {
           const focused = state.index === index;
-          const icon = ICONS[route.name];
-          if (!icon) return null;
+          const Icon = ICONS[route.name];
+          if (!Icon) return null;
 
           return (
             <Pressable
@@ -69,16 +78,16 @@ export function TabBar({ state, navigation }: TabBarProps) {
               }}
             >
               <View style={[styles.pill, focused && styles.pillActive]}>
-                <Ionicons
-                  name={focused ? icon.active : icon.idle}
-                  size={24}
-                  color={focused ? theme.foreground : "rgba(255,255,255,0.55)"}
+                <Icon
+                  size={23}
+                  filled={focused}
+                  color={focused ? theme.foreground : "rgba(255,255,255,0.6)"}
                 />
               </View>
             </Pressable>
           );
         })}
-      </View>
+      </BlurView>
     </View>
   );
 }
@@ -94,11 +103,13 @@ const styles = StyleSheet.create({
   capsule: {
     flexDirection: "row",
     alignItems: "center",
-    height: 52,
-    // Inset from both edges so it reads as a floating object.
-    width: "78%",
-    borderRadius: 26,
-    backgroundColor: "rgba(32,32,34,0.92)",
+    // Measured off Instagram: 352pt of a 393pt screen, 41pt tall, fully
+    // rounded ends.
+    height: 42,
+    width: "89%",
+    borderRadius: 21,
+    backgroundColor: "rgba(28,28,30,0.45)",
+    overflow: "hidden",
     paddingHorizontal: 4,
     shadowColor: "#000",
     shadowOpacity: 0.4,
@@ -106,12 +117,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
   },
   slot: { flex: 1, alignItems: "center", justifyContent: "center" },
-  // Rounded rectangle, not a capsule: radius well under half the height so
-  // the sides stay flat, as Instagram's does.
+  // 50x33 measured off Instagram, fully rounded. It reads as a lozenge
+  // rather than a circle because it is half again as wide as it is tall —
+  // the earlier version looked circular because it was nearly square, not
+  // because the radius was too large.
   pill: {
-    width: 56,
-    height: 42,
-    borderRadius: 15,
+    width: 52,
+    height: 34,
+    borderRadius: 17,
     alignItems: "center",
     justifyContent: "center",
   },

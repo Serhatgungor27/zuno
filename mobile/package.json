@@ -5,14 +5,15 @@
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
     "@supabase/supabase-js": "^2.112.3",
-    "expo": "^57.0.23",
+    "expo": "~57.0.24",
     "expo-audio": "~57.0.5",
     "expo-auth-session": "~57.0.12",
+    "expo-blur": "~57.0.3",
     "expo-constants": "~57.0.18",
     "expo-crypto": "~57.0.3",
     "expo-dev-client": "~57.0.19",
     "expo-linking": "~57.0.10",
-    "expo-router": "~57.0.21",
+    "expo-router": "~57.0.22",
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "expo-web-browser": "~57.0.3",
@@ -20,6 +21,7 @@
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",
     "react-native-screens": "~4.26.0",
+    "react-native-svg": "15.15.4",
     "react-native-url-polyfill": "^4.0.0"
   },
   "devDependencies": {
