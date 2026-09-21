@@ -183,10 +183,6 @@ export function DiscoverFeed({
     p.play();
   });
 
-  // Temporary: diagnosing why video cards arrive paused. Remove once settled.
-  useEventListener(video, "playingChange", ({ isPlaying }) => {
-    console.log("[zuno/video] playingChange:", isPlaying, "status:", video.status);
-  });
 
   videoUrlRef.current = videoUrl;
   videoPlayerRef.current = video;
@@ -380,10 +376,6 @@ export function DiscoverFeed({
       return;
     }
     let alive = true;
-    console.log(
-      "[zuno/video] card:", active.name,
-      "| cached url:", videoUrls.get(active.trackId) === undefined ? "unknown" : !!videoUrls.get(active.trackId)
-    );
     setVideoUrl(videoUrls.get(active.trackId) ?? null);
     fetchVideo(active).then((url) => {
       if (alive) setVideoUrl(url);
@@ -399,8 +391,7 @@ export function DiscoverFeed({
   // The preview deliberately doesn't start when a video is expected, so a
   // video that fails to load would leave the card silent. Dropping the url
   // rebuilds the player empty and hands the sound back to the preview.
-  useEventListener(video, "statusChange", ({ status, error }) => {
-    console.log("[zuno/video] status:", status, error ? `error=${error.message}` : "");
+  useEventListener(video, "statusChange", ({ status }) => {
     if (status === "error") setVideoUrl(null);
   });
 
@@ -440,7 +431,6 @@ export function DiscoverFeed({
     // The video carries the sound when there is one, so the preview stands
     // down. Playing both was what let the pause button silence only half.
     if (videoUrl) {
-      console.log("[zuno/video] sync -> video owns the card");
       quiet(player);
       video.play();
       return;
