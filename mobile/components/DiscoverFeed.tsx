@@ -179,6 +179,17 @@ export function DiscoverFeed({
   // Set when the card is paused by a tap, so the readiness handler below does
   // not immediately undo it. Cleared on every new card.
   const pausedByUserRef = useRef(false);
+  /**
+   * Every track that has been the active card. Nothing in here may ever be
+   * removed from the list.
+   *
+   * Bounding removal by index was wrong in both directions: "ahead of the
+   * current card" is the future when scrolling down and the recent past when
+   * scrolling up, so going back up deleted what had just been seen. What the
+   * reader has looked at is the thing that must stay put, whichever way they
+   * are travelling.
+   */
+  const seenRef = useRef(new Set<string>());
   // Lets the focus effect reach the current closeOut without re-subscribing.
   const closeOutRef = useRef<() => void>(() => {});
   // Read through refs so callbacks keep one identity for the life of the feed.
@@ -367,24 +378,32 @@ export function DiscoverFeed({
     skipsRef.current.set(artist, count);
     if (count < SKIPS_BEFORE_DROP) return;
 
-    setTracks((prev) => {
-      const at = prev.findIndex((t) => t.trackId === active?.trackId);
-      if (at < 0) return prev;
-      // Only ever drop tracks AHEAD. Everything up to and including the
-      // current card is history: removing from it renumbers the list under
-      // the reader, so scrolling back lands somewhere else entirely — which
-      // is not how a feed is allowed to behave.
-      return prev.filter((t, i) => i <= at || t.artist !== artist);
-    });
+    setTracks((prev) =>
+      prev.filter((t) => seenRef.current.has(t.trackId) || t.artist !== artist)
+    );
   }, [player, active?.trackId]);
 
   closeOutRef.current = closeOut;
+
+  // Temporary: diagnosing "scrolling back shows different songs".
+  useEffect(() => {
+    const at = tracks.findIndex((t) => t.trackId === active?.trackId);
+    const around = tracks
+      .slice(Math.max(0, at - 2), at + 3)
+      .map((t, i) => `${Math.max(0, at - 2) + i}${t.trackId === active?.trackId ? "*" : " "}:${t.artist}`)
+      .join(" | ");
+    console.log(`[zuno/list] len=${tracks.length} idx=${activeIndex} at=${at}  ${around}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.trackId, tracks]);
 
   // Card changed: close out the last one and start the clock on this one.
   useEffect(() => {
     closeOut();
     pausedByUserRef.current = false;
-    if (active) watchingRef.current = { track: active, since: Date.now() };
+    if (active) {
+      seenRef.current.add(active.trackId);
+      watchingRef.current = { track: active, since: Date.now() };
+    }
     // closeOut is intentionally omitted: it changes with the active track, and
     // depending on it would close the book on the card as it opens.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -594,13 +613,11 @@ export function DiscoverFeed({
       }),
     }).catch(() => {});
 
-    setTracks((prev) => {
-      const at = prev.findIndex((t) => t.trackId === track.trackId);
-      if (at < 0) return prev;
-      // From this card forward. Turning an artist down should change what is
-      // coming, not rewrite where you have already been.
-      return prev.filter((t, i) => i < at || t.artist !== track.artist);
-    });
+    // Only what has not been seen. Turning an artist down changes what is
+    // coming; it must not renumber the cards already behind the reader.
+    setTracks((prev) =>
+      prev.filter((t) => seenRef.current.has(t.trackId) || t.artist !== track.artist)
+    );
   }, []);
 
   const onReposted = useCallback((trackId: string, next: boolean) => {
