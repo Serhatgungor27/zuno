@@ -77,6 +77,12 @@ const TOP_PER_ARTIST = 50;
  * sixty were new.
  */
 const RELATED_STRIDE = MAX_RELATED;
+/**
+ * How long a track stays out of the feed after being seen. Long enough that
+ * it is not "that song again" within a session or the next day; short enough
+ * that the catalogue is not permanently consumed.
+ */
+const SEEN_COOLDOWN_DAYS = 14;
 
 // Fallback search queries per page for variety
 const SEARCH_QUERIES = [
@@ -226,6 +232,12 @@ export async function GET(req: Request) {
 
   // Parse excluded track IDs (already-liked tracks — never show again)
   const excludeIds = new Set(excludeIdsParam ? excludeIdsParam.split(",").filter(Boolean) : []);
+  /**
+   * Seen recently — held out, but separately from the permanent exclusions.
+   * Someone who has been through most of what their taste reaches would
+   * otherwise get an empty feed, and no music is worse than familiar music.
+   */
+  const seenIds = new Set<string>();
 
   // Parse liked artists from client (top 3)
   const clientArtists = artistsParam ? artistsParam.split(",").filter(Boolean).slice(0, 3) : [];
@@ -270,24 +282,57 @@ export async function GET(req: Request) {
         .eq("id", auth.user.id)
         .maybeSingle();
 
-      const [interactions, likes, dislikes] = await Promise.all([
+      const seenSince = new Date(Date.now() - SEEN_COOLDOWN_DAYS * 86_400_000).toISOString();
+
+      const [interactions, likes, dislikes, reposts] = await Promise.all([
         supabase
           .from("discover_interactions")
-          .select("artist, action, completion, time_spent_ms, created_at")
+          .select("track_id, artist, action, completion, time_spent_ms, created_at")
           .eq("user_id", auth.user.id)
           .order("created_at", { ascending: false })
-          .limit(1000),
+          .limit(3000),
         supabase
           .from("discover_likes")
-          .select("artist, created_at")
+          .select("track_id, artist, created_at")
           .eq("user_id", auth.user.id)
-          .limit(300),
+          .limit(1000),
         supabase
           .from("discover_dislikes")
-          .select("artist")
+          .select("track_id, artist")
           .eq("user_id", auth.user.id)
-          .limit(500),
+          .limit(1000),
+        supabase
+          .from("reposts")
+          .select("history_id")
+          .eq("user_id", auth.user.id)
+          .limit(1000),
       ]);
+
+      // What not to show again.
+      //
+      // The app could only ever send what was on screen, truncated to fit a
+      // URL — so anything from a previous session came straight back, and a
+      // reposted track was never held out at all. The server has the whole
+      // history, so it decides.
+      //
+      // Liked, turned down and reposted are permanent: you already have them.
+      // Merely seeing something is a cooldown, not a life sentence, so it can
+      // resurface once it has been out of sight for a while.
+      for (const r of (likes.data ?? []) as { track_id?: string }[]) {
+        if (r.track_id) excludeIds.add(r.track_id);
+      }
+      for (const r of (dislikes.data ?? []) as { track_id?: string }[]) {
+        if (r.track_id) excludeIds.add(r.track_id);
+      }
+      for (const r of (reposts.data ?? []) as { history_id?: string | null }[]) {
+        if (r.history_id) excludeIds.add(r.history_id);
+      }
+      for (const r of (interactions.data ?? []) as {
+        track_id?: string;
+        created_at?: string;
+      }[]) {
+        if (r.track_id && (r.created_at ?? "") >= seenSince) seenIds.add(r.track_id);
+      }
 
       const affinity = artistAffinity({
         interactions: (interactions.data ?? []) as AffinityRow[],
@@ -400,6 +445,7 @@ export async function GET(req: Request) {
     t.preview &&
     t.album?.cover_xl &&
     !excludeIds.has(String(t.id)) &&
+    !seenIds.has(String(t.id)) &&
     !excludedArtists.has(normaliseArtist(t.artist?.name ?? "")) &&
     // The seeds' own catalogue is exactly what the listener already knows.
     !seedNames.has(normaliseArtist(t.artist?.name ?? ""));
@@ -422,18 +468,30 @@ export async function GET(req: Request) {
     return list;
   };
 
-  const seen = new Set<number>();
-  const fromTaste = shuffle(dedupe(relatedTracks, seen));
-  const fromCharts = shuffle(
-    dedupe([...tracks0, ...tracks1, ...tracks2, ...searchTracks], seen)
-  );
+  const TARGET = 60;
+
+  const collect = () => {
+    const used = new Set<number>();
+    return {
+      taste: shuffle(dedupe(relatedTracks, used)),
+      charts: shuffle(dedupe([...tracks0, ...tracks1, ...tracks2, ...searchTracks], used)),
+    };
+  };
+
+  let { taste: fromTaste, charts: fromCharts } = collect();
+
+  // If holding back everything recently seen leaves almost nothing, let the
+  // seen ones back in. Liked, disliked and reposted stay out regardless.
+  if (fromTaste.length + fromCharts.length < TARGET / 2 && seenIds.size > 0) {
+    seenIds.clear();
+    ({ taste: fromTaste, charts: fromCharts } = collect());
+  }
 
   // Weighted hard towards taste, with a stated slice held back for things
   // outside it. An earlier 70/30 split left a Turkish-rap feed carrying
   // Taylor Swift, which is not what someone means by "music like this" — but
   // zero exploration is worse, because the feed can then only ever return
   // what it already knows.
-  const TARGET = 60;
   const tasteShare =
     fromTaste.length > 0 ? Math.round(TARGET * (1 - EXPLORE_SHARE)) : 0;
   const all = shuffle([
