@@ -70,8 +70,13 @@ const MAX_RELATED = 16;
  * few pages exhausted it and the same songs kept reappearing.
  */
 const TOP_PER_ARTIST = 50;
-/** How far the window of neighbouring artists slides with each page. */
-const RELATED_STRIDE = 8;
+/**
+ * How far the window of neighbouring artists slides with each page. Equal to
+ * the window itself, so consecutive pages share no artists at all — a stride
+ * of half that overlapped them, and by the sixth page only eight tracks in
+ * sixty were new.
+ */
+const RELATED_STRIDE = MAX_RELATED;
 
 // Fallback search queries per page for variety
 const SEARCH_QUERIES = [
