@@ -11,11 +11,16 @@ export const dynamic = "force-dynamic";
  */
 
 /**
- * How deep to look, and how many to show. Twelve was not enough: searching
- * "Diyar" put the artist actually wanted at position 43.
+ * How deep to look, and how many to show.
+ *
+ * Everything Deezer returns is shown. Twelve was not enough — searching
+ * "Diyar" puts Diyar Dersim, the artist actually meant, at position 43 — and
+ * no reordering finds him, because neither Deezer's artist ranking nor its
+ * track ranking places him anywhere near the top. Truncating just hides him.
+ * Typing the full name returns him second, which is the reliable path.
  */
 const SEARCH_DEPTH = 50;
-const SEARCH_RESULTS = 25;
+const SEARCH_RESULTS = 50;
 
 function normalise(name: string) {
   return name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
