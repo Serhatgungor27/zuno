@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { TAB_BAR_CLEARANCE } from "../../components/TabBar";
+import { CommentsSheet } from "../../components/CommentsSheet";
 import { api } from "../../lib/api";
 import { onTabBarScroll } from "../../lib/tabBarScroll";
 import { theme } from "../../lib/theme";
@@ -52,6 +53,8 @@ function iconFor(type: string): { name: keyof typeof Ionicons.glyphMap; tint: st
 }
 
 export default function Notifications() {
+  // The comment thread a notification opened, if any.
+  const [openThread, setOpenThread] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<ZunoNotification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +91,8 @@ export default function Notifications() {
   }
 
   return (
-    <FlatList
+    <>
+      <FlatList
       style={styles.list}
       data={items}
       keyExtractor={(n) => n.id}
@@ -131,10 +135,17 @@ export default function Notifications() {
       renderItem={({ item }) => {
         const icon = iconFor(item.type);
         const handle = item.actor_username ?? item.actor_id;
+        // "X commented on your vibe" should land on the comment, not on X's
+        // profile — following the notification to a dead end is worse than
+        // not sending it.
+        const thread = item.type === "vibe_comment" ? item.history_id : null;
         return (
           <Pressable
-            disabled={!handle}
-            onPress={() => handle && router.push(`/u/${encodeURIComponent(handle)}`)}
+            disabled={!handle && !thread}
+            onPress={() => {
+              if (thread) return setOpenThread(thread);
+              if (handle) router.push(`/u/${encodeURIComponent(handle)}`);
+            }}
             style={({ pressed }) => [
               styles.row,
               !item.read && styles.rowUnread,
@@ -163,6 +174,15 @@ export default function Notifications() {
         );
       }}
     />
+
+      {openThread ? (
+        <CommentsSheet
+          historyId={openThread}
+          visible
+          onClose={() => setOpenThread(null)}
+        />
+      ) : null}
+    </>
   );
 }
 

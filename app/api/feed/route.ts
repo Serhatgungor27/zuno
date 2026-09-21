@@ -140,6 +140,8 @@ export async function GET(req: Request) {
     type Item = {
       id: string;
       kind: "vibe" | "repost";
+      /** The listening_history row this refers to — what comments key on. */
+      historyId: string | null;
       trackId: string | null;
       track: string;
       artist: string;
@@ -159,6 +161,7 @@ export async function GET(req: Request) {
       items.push({
         id: `vibe:${p.id}`,
         kind: "vibe",
+        historyId: p.id as string,
         trackId: p.track_id as string,
         track: p.track_name as string,
         artist: p.artist as string,
@@ -177,6 +180,7 @@ export async function GET(req: Request) {
       items.push({
         id: `repost:${r.id}`,
         kind: "repost",
+        historyId: (r.history_id as string | null) ?? null,
         trackId: (r.history_id as string) ?? null,
         track: r.track_name as string,
         artist: r.artist as string,

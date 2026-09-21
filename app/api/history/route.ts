@@ -30,7 +30,8 @@ export async function GET(req: Request) {
 
   const { data: tracks } = await supabase
     .from("listening_history")
-    .select("track_id, track_name, artist, album_image, track_url, played_at, repeat_count")
+    // `id` identifies the vibe itself — likes and comments key on it.
+    .select("id, track_id, track_name, artist, album_image, track_url, played_at, repeat_count")
     .eq("user_spotify_id", user.spotify_id)
     .order("played_at", { ascending: false })
     .limit(15);

@@ -206,6 +206,8 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
       /** A real Spotify link, or null when the source has none. */
       spotifyUrl?: string | null;
       appleUrl?: string | null;
+      /** Set only for a real vibe; chart rows have nothing to comment on. */
+      historyId?: string;
       preview?: string | null;
     }) => {
       setNowPlaying({
@@ -215,7 +217,8 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
         url: null,
         spotifyUrl: item.spotifyUrl ?? null,
         appleUrl: item.appleUrl ?? null,
-        historyId: item.trackId,
+        historyId: item.historyId ?? item.trackId,
+        canComment: !!item.historyId,
       });
       try {
         if (item.preview) {
@@ -264,6 +267,8 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
           image: f.albumImage,
           trackId: f.trackId ?? undefined,
           url: f.trackUrl,
+          // The vibe itself — what a comment thread hangs off.
+          historyId: f.historyId ?? undefined,
           // Vibes and reposts carry the real Spotify link they were played from.
           spotifyUrl: f.trackUrl,
           appleUrl: null as string | null,
@@ -279,6 +284,7 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
           image: t.albumImage,
           trackId: t.trackId,
           url: t.sourceUrl,
+          historyId: undefined as string | undefined,
           // A chart row has no Spotify link. Leaving this null lets the sheet
           // fall back to a Spotify search for the track, instead of opening
           // Deezer or Apple Music from a button that says Spotify.

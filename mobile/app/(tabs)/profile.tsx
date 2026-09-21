@@ -135,7 +135,10 @@ export default function Profile() {
         image: item.image,
         url: null,
         spotifyUrl: item.spotifyUrl ?? null,
-        historyId: item.trackId,
+        // The vibe itself, not the catalogue track — likes and comments hang
+        // off the play, not the song.
+        historyId: item.historyId ?? item.trackId,
+        canComment: !!item.historyId,
       });
       try {
         const params = new URLSearchParams({ track: item.label, artist: item.artist });
@@ -257,6 +260,7 @@ export default function Profile() {
             label: v.track_name,
             artist: v.artist,
             trackId: v.track_id,
+            historyId: v.id,
             spotifyUrl: v.track_url,
           }))}
           emptyTitle="No vibes yet"
@@ -272,6 +276,7 @@ export default function Profile() {
             label: r.track_name,
             artist: r.artist,
             trackId: r.history_id,
+            historyId: r.history_id,
             spotifyUrl: r.track_url,
           }))}
           emptyTitle="No reposts yet"
@@ -349,6 +354,8 @@ function TabButton({
 
 type GridItem = {
   key: string;
+  /** The listening_history row, when this tile is a real play. */
+  historyId?: string;
   image: string | null;
   label: string;
   artist: string;

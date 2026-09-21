@@ -28,6 +28,8 @@ const TILE = (Dimensions.get("window").width - GUTTER * 2) / 3;
 type TabKey = "vibes" | "reposts";
 type GridItem = {
   key: string;
+  /** The listening_history row, when this tile is a real play. */
+  historyId?: string;
   image: string | null;
   label: string;
   artist: string;
@@ -124,7 +126,8 @@ export default function UserProfile() {
         image: item.image,
         url: null,
         spotifyUrl: item.spotifyUrl ?? null,
-        historyId: item.trackId,
+        historyId: item.historyId ?? item.trackId,
+        canComment: !!item.historyId,
       });
       try {
         const params = new URLSearchParams({ track: item.label, artist: item.artist });
@@ -174,6 +177,7 @@ export default function UserProfile() {
           label: v.track_name,
           artist: v.artist,
           trackId: v.track_id,
+          historyId: v.id,
           spotifyUrl: v.track_url,
         }))
       : reposts.map((r) => ({
@@ -182,6 +186,7 @@ export default function UserProfile() {
           label: r.track_name,
           artist: r.artist,
           trackId: r.history_id,
+          historyId: r.history_id,
           spotifyUrl: r.track_url,
         }));
 

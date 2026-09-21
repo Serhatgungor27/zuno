@@ -74,6 +74,8 @@ export type FollowStats = {
 
 /** GET /api/history?userId= — the "Vibes" grid. */
 export type HistoryTrack = {
+  /** The listening_history row — what likes and comments key on. */
+  id: string;
   track_id: string;
   track_name: string;
   artist: string;
@@ -92,6 +94,19 @@ export type Repost = {
   album_image: string | null;
   track_url: string | null;
   created_at: string;
+};
+
+/** GET /api/vibe/comments?historyId= */
+export type VibeComment = {
+  id: string;
+  user_id: string;
+  user_name: string | null;
+  user_image: string | null;
+  user_username: string | null;
+  text: string;
+  created_at: string;
+  like_count: number;
+  user_liked: boolean;
 };
 
 /** GET /api/taste */
@@ -172,6 +187,8 @@ export type TrendingTrack = {
 export type FollowingItem = {
   id: string;
   kind: "vibe" | "repost";
+  /** The vibe this refers to; null on a repost of something since removed. */
+  historyId: string | null;
   trackId: string | null;
   track: string;
   artist: string;
