@@ -156,6 +156,9 @@ export function DiscoverFeed({
   const sessionIdRef = useRef(Math.random().toString(36).slice(2));
   const watchingRef = useRef<{ track: DiscoverTrack; since: number } | null>(null);
   const skipsRef = useRef(new Map<string, number>());
+  // Set when the card is paused by a tap, so the readiness handler below does
+  // not immediately undo it. Cleared on every new card.
+  const pausedByUserRef = useRef(false);
   // Lets the focus effect reach the current closeOut without re-subscribing.
   const closeOutRef = useRef<() => void>(() => {});
   // Read through refs so callbacks keep one identity for the life of the feed.
@@ -352,6 +355,7 @@ export function DiscoverFeed({
   // Card changed: close out the last one and start the clock on this one.
   useEffect(() => {
     closeOut();
+    pausedByUserRef.current = false;
     if (active) watchingRef.current = { track: active, since: Date.now() };
     // closeOut is intentionally omitted: it changes with the active track, and
     // depending on it would close the book on the card as it opens.
@@ -404,7 +408,28 @@ export function DiscoverFeed({
   // video that fails to load would leave the card silent. Dropping the url
   // rebuilds the player empty and hands the sound back to the preview.
   useEventListener(video, "statusChange", ({ status }) => {
-    if (status === "error") setVideoUrl(null);
+    if (status === "error") {
+      setVideoUrl(null);
+      return;
+    }
+
+    // Assert playback at the one moment the player is definitely able to obey.
+    //
+    // play() is called twice on the way in — once in the setup above, once by
+    // the effect that hands the card over — and both land while the source is
+    // still loading, where they can be dropped. That left a video sitting
+    // ready but paused, needing a tap. Readiness is the correct moment to say
+    // what should be happening, rather than hoping an earlier call survived.
+    if (
+      status === "readyToPlay" &&
+      videoUrl &&
+      isActive &&
+      focused &&
+      !pausedByUserRef.current &&
+      !video.playing
+    ) {
+      video.play();
+    }
   });
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
@@ -469,15 +494,22 @@ export function DiscoverFeed({
     const v = videoPlayerRef.current;
     if (videoUrlRef.current && v) {
       if (v.playing) {
+        pausedByUserRef.current = true;
         v.pause();
         player.pause();
       } else {
+        pausedByUserRef.current = false;
         v.play();
       }
       return;
     }
-    if (player.playing) player.pause();
-    else player.play();
+    if (player.playing) {
+      pausedByUserRef.current = true;
+      player.pause();
+    } else {
+      pausedByUserRef.current = false;
+      player.play();
+    }
   }, [player]);
 
   const toggleLike = useCallback((track: DiscoverTrack) => {
