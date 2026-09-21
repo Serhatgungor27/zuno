@@ -334,7 +334,8 @@ export function DiscoverFeed({
     // Each refresh asks for a different genre group, so you get a genuinely
     // new set rather than the same chart reshuffled.
     if (refreshKey > 0) {
-      pageRef.current = (pageRef.current + 1 + Math.floor(Math.random() * (PAGES - 1))) % PAGES;
+      // A reload jumps somewhere else in the pool rather than stepping.
+      pageRef.current += 1 + Math.floor(Math.random() * PAGES);
     }
     setLoading(true);
     api<DiscoverResponse>(
@@ -500,7 +501,9 @@ export function DiscoverFeed({
     if (loadingMoreRef.current || !prefs || tracks.length === 0) return;
     loadingMoreRef.current = true;
     try {
-      pageRef.current = (pageRef.current + 1) % PAGES;
+      // No wrap: the route uses the raw page to pick which slice of the
+      // related-artist pool to draw from, so climbing keeps finding new ones.
+      pageRef.current += 1;
       const data = await api<DiscoverResponse>(
         `/api/discover?${buildQuery(
           prefs,

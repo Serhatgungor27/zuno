@@ -62,9 +62,16 @@ const MAX_SEEDS = 4;
  * and it can never surface an interest they have not expressed yet.
  */
 const EXPLORE_SHARE = 0.15;
-/** Neighbouring artists pulled in total, shared evenly across the seeds. */
+/** Neighbouring artists used per request, taken from a much larger pool. */
 const MAX_RELATED = 16;
-const TOP_PER_ARTIST = 8;
+/**
+ * Deezer returns up to fifty per artist and we were asking for eight, which
+ * capped the whole taste pool at about ninety tracks — small enough that a
+ * few pages exhausted it and the same songs kept reappearing.
+ */
+const TOP_PER_ARTIST = 50;
+/** How far the window of neighbouring artists slides with each page. */
+const RELATED_STRIDE = 8;
 
 // Fallback search queries per page for variety
 const SEARCH_QUERIES = [
@@ -193,7 +200,11 @@ async function searchDeezer(query: string, limit = 50): Promise<DeezerTrack[]> {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const sessionId = searchParams.get("sessionId") ?? "";
-  const page = Math.min(parseInt(searchParams.get("page") ?? "0", 10), GENRE_GROUPS.length - 1);
+  // The raw page number, uncapped. It was clamped to the number of genre
+  // groups, so every page past the fifth was identical to the fifth — which
+  // is a large part of why scrolling ran out of new music.
+  const page = Math.max(0, parseInt(searchParams.get("page") ?? "0", 10) || 0);
+  const genrePage = page % GENRE_GROUPS.length;
   const excludeIdsParam = searchParams.get("excludeIds") ?? "";
   const artistsParam = searchParams.get("artists") ?? "";
   const genresParam = searchParams.get("genres") ?? "";
@@ -228,10 +239,10 @@ export async function GET(req: Request) {
     genreGroup = shuffled.slice(0, 3);
   } else if (tasteGenreIds.length > 0) {
     // Mix taste genres with default group
-    const defaultGroup = GENRE_GROUPS[page];
+    const defaultGroup = GENRE_GROUPS[genrePage];
     genreGroup = [...tasteGenreIds, ...defaultGroup].slice(0, 3);
   } else {
-    genreGroup = GENRE_GROUPS[page];
+    genreGroup = GENRE_GROUPS[genrePage];
   }
 
   // The seeds are the artists we know the listener already likes. They are
@@ -312,7 +323,7 @@ export async function GET(req: Request) {
     const takenIds = new Set<number>(resolved.map((a) => a.id));
     const deepest = Math.max(0, ...neighboursPerSeed.map((n) => n.length));
 
-    outer: for (let depth = 0; depth < deepest; depth++) {
+    for (let depth = 0; depth < deepest; depth++) {
       for (const neighbours of neighboursPerSeed) {
         const artist = neighbours[depth];
         if (!artist) continue;
@@ -322,12 +333,21 @@ export async function GET(req: Request) {
         }
         takenIds.add(artist.id);
         picked.push(artist);
-        if (picked.length >= MAX_RELATED) break outer;
       }
     }
 
+    // Every eligible neighbour is collected — four seeds give up to eighty —
+    // and each page takes a different window of them. Previously the first
+    // sixteen were used on every page, so no amount of scrolling reached a
+    // new artist.
+    const start = picked.length ? (page * RELATED_STRIDE) % picked.length : 0;
+    const window = [...picked.slice(start), ...picked.slice(0, start)].slice(
+      0,
+      MAX_RELATED
+    );
+
     relatedTracks = (
-      await Promise.all(picked.map((a) => artistTopTracks(a.id, TOP_PER_ARTIST)))
+      await Promise.all(window.map((a) => artistTopTracks(a.id, TOP_PER_ARTIST)))
     ).flat();
   }
 
@@ -356,7 +376,7 @@ export async function GET(req: Request) {
   // Only fall back to generic queries when there is nothing personal to go on;
   // with seeds, the related-artist tracks are the personalised half.
   if (searchQueries.length === 0 && relatedTracks.length === 0) {
-    searchQueries = [SEARCH_QUERIES[page % SEARCH_QUERIES.length]];
+    searchQueries = [SEARCH_QUERIES[genrePage % SEARCH_QUERIES.length]];
   }
 
   // Fetch all 3 genre charts + personalized searches in parallel
