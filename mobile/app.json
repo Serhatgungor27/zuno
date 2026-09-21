@@ -20,7 +20,17 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -46,7 +56,18 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiBaseUrl": "https://botan-now-playing.vercel.app"
+      "apiBaseUrl": "https://botan-now-playing.vercel.app",
+      "router": {},
+      "eas": {
+        "projectId": "a9166691-691d-4f83-9aa6-39b99eff6efe"
+      }
+    },
+    "owner": "serhatg27",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/a9166691-691d-4f83-9aa6-39b99eff6efe"
     }
   }
 }
