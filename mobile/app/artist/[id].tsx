@@ -117,6 +117,18 @@ export default function ArtistScreen() {
 
   return (
     <View style={styles.screen}>
+      <Pressable
+        onPress={() => router.back()}
+        hitSlop={16}
+        style={({ pressed }) => [
+          styles.back,
+          { top: insets.top + 6 },
+          pressed && styles.pressed,
+        ]}
+      >
+        <Ionicons name="chevron-back" size={24} color={theme.foreground} />
+      </Pressable>
+
       <FlatList
         data={tracks}
         keyExtractor={(t) => t.trackId}
@@ -124,15 +136,7 @@ export default function ArtistScreen() {
         onScroll={onTabBarScroll}
         contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE + 24 }}
         ListHeaderComponent={
-          <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-            <Pressable
-              onPress={() => router.back()}
-              hitSlop={14}
-              style={({ pressed }) => [styles.back, pressed && styles.pressed]}
-            >
-              <Ionicons name="chevron-back" size={22} color={theme.foreground} />
-            </Pressable>
-
+          <View style={[styles.header, { paddingTop: insets.top + 56 }]}>
             {artist?.image ? (
               <Image source={{ uri: artist.image }} style={styles.portrait} />
             ) : (
@@ -140,7 +144,7 @@ export default function ArtistScreen() {
             )}
             <Text style={styles.name}>{artist?.name}</Text>
             <Text style={styles.meta}>
-              {(artist?.fans ?? 0).toLocaleString()} fans · {tracks.length} tracks
+              {tracks.length} {tracks.length === 1 ? "track" : "tracks"}
             </Text>
           </View>
         }
@@ -201,7 +205,20 @@ const styles = StyleSheet.create({
   },
   error: { color: "#ff6b6b", fontSize: 15, textAlign: "center" },
   header: { alignItems: "center", paddingBottom: 18, gap: 6 },
-  back: { position: "absolute", left: 14, top: 8, zIndex: 2, padding: 6 },
+  // Fixed to the screen rather than the header: it was positioned inside a
+  // block whose own top padding is the safe area, which put it under the
+  // status bar and out of reach.
+  back: {
+    position: "absolute",
+    left: 10,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
   portrait: { width: 132, height: 132, borderRadius: 66, backgroundColor: theme.surface },
   portraitFallback: { backgroundColor: theme.surface },
   name: { color: theme.foreground, fontSize: 24, fontWeight: "700", marginTop: 6 },

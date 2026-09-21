@@ -10,6 +10,10 @@ export const dynamic = "force-dynamic";
  *   ?id=<id>   one artist plus their top tracks
  */
 
+/** Albums to pull tracklists from. Each one costs a request. */
+const MAX_ALBUMS = 12;
+const MAX_TRACKS = 100;
+
 type DeezerArtist = {
   id: number;
   name: string;
@@ -59,9 +63,11 @@ export async function GET(req: Request) {
 
   if (id) {
     try {
-      const [artistRes, topRes] = await Promise.all([
-        fetch(`https://api.deezer.com/artist/${encodeURIComponent(id)}`, { cache: "no-store" }),
-        fetch(`https://api.deezer.com/artist/${encodeURIComponent(id)}/top?limit=100`, { cache: "no-store" }),
+      const base = `https://api.deezer.com/artist/${encodeURIComponent(id)}`;
+      const [artistRes, topRes, albumsRes] = await Promise.all([
+        fetch(base, { cache: "no-store" }),
+        fetch(`${base}/top?limit=100`, { cache: "no-store" }),
+        fetch(`${base}/albums?limit=${MAX_ALBUMS}`, { cache: "no-store" }),
       ]);
 
       if (!artistRes.ok) {
@@ -69,14 +75,50 @@ export async function GET(req: Request) {
       }
 
       const artist = (await artistRes.json()) as DeezerArtist;
-      const top = topRes.ok ? ((await topRes.json()).data as DeezerTrack[]) : [];
+      const top = topRes.ok ? (((await topRes.json()).data ?? []) as DeezerTrack[]) : [];
+      const albums = albumsRes.ok
+        ? (((await albumsRes.json()).data ?? []) as { id: number }[])
+        : [];
+
+      // The catalogue comes from the albums, not from /top.
+      //
+      // /top is Deezer's most-played list and it is frequently empty — "Diyar
+      // Pala" has 16,000 fans and seventeen albums and returns nothing from
+      // it — so an artist page built on /top alone is blank for exactly the
+      // artists worth looking up. Albums are the reliable source; /top is
+      // still used first because it is a genuine popularity ordering.
+      const albumTracks = (
+        await Promise.all(
+          albums.slice(0, MAX_ALBUMS).map(async (a) => {
+            try {
+              const r = await fetch(`https://api.deezer.com/album/${a.id}/tracks?limit=100`, {
+                cache: "no-store",
+              });
+              return r.ok ? (((await r.json()).data ?? []) as DeezerTrack[]) : [];
+            } catch {
+              return [];
+            }
+          })
+        )
+      ).flat();
+
+      const seen = new Set<string>();
+      const ordered: DeezerTrack[] = [];
+      for (const t of [...top, ...albumTracks]) {
+        if (!t.preview) continue;
+        // One entry per song: the same track appears on a single and again on
+        // the album it came from.
+        const key = t.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        ordered.push(t);
+        if (ordered.length >= MAX_TRACKS) break;
+      }
 
       return NextResponse.json({
         ok: true,
         artist: formatArtist(artist),
-        // Deezer returns whatever it has, often fewer than 100. Only tracks
-        // with a preview are useful here — the point is to hear them.
-        tracks: top.filter((t) => t.preview).map((t) => formatTrack(t, artist.name)),
+        tracks: ordered.map((t) => formatTrack(t, artist.name)),
       });
     } catch {
       return NextResponse.json({ ok: false, error: "lookup_failed" }, { status: 502 });
