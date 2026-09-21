@@ -10,6 +10,17 @@ export const dynamic = "force-dynamic";
  *   ?id=<id>   one artist plus their top tracks
  */
 
+/**
+ * How deep to look, and how many to show. Twelve was not enough: searching
+ * "Diyar" put the artist actually wanted at position 43.
+ */
+const SEARCH_DEPTH = 50;
+const SEARCH_RESULTS = 25;
+
+function normalise(name: string) {
+  return name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+}
+
 /** Albums to pull tracklists from. Each one costs a request. */
 const MAX_ALBUMS = 12;
 const MAX_TRACKS = 100;
@@ -129,22 +140,34 @@ export async function GET(req: Request) {
 
   try {
     const res = await fetch(
-      `https://api.deezer.com/search/artist?q=${encodeURIComponent(q)}&limit=12`,
+      `https://api.deezer.com/search/artist?q=${encodeURIComponent(q)}&limit=${SEARCH_DEPTH}`,
       { cache: "no-store" }
     );
     if (!res.ok) return NextResponse.json({ ok: true, artists: [] });
 
     const list = ((await res.json()).data ?? []) as DeezerArtist[];
+    const wanted = normalise(q);
 
-    // By fan count, not by Deezer's order. Searching "Tarkan" returns a
-    // 43-fan namesake ahead of the 540,000-fan one, and nobody means the
-    // former.
+    // Exact name matches first, ordered by fans among themselves; everything
+    // else keeps Deezer's own relevance order.
+    //
+    // Sorting the whole list by fans was wrong. nb_fan counts activity on
+    // Deezer alone, which badly misrepresents artists popular elsewhere —
+    // Diyar Dersim has 390,000 monthly listeners on Spotify and 111 fans
+    // here, so a fan sort buried him beneath an unrelated artist with a
+    // similar name. Exact-match tiering still fixes the case it was added
+    // for: two artists both called "Tarkan", where the 540,000-fan one is
+    // obviously the one meant.
+    const exact: DeezerArtist[] = [];
+    const rest: DeezerArtist[] = [];
+    for (const a of list) {
+      (normalise(a.name) === wanted ? exact : rest).push(a);
+    }
+    exact.sort((a, b) => (b.nb_fan ?? 0) - (a.nb_fan ?? 0));
+
     return NextResponse.json({
       ok: true,
-      artists: list
-        .slice()
-        .sort((a, b) => (b.nb_fan ?? 0) - (a.nb_fan ?? 0))
-        .map(formatArtist),
+      artists: [...exact, ...rest].slice(0, SEARCH_RESULTS).map(formatArtist),
     });
   } catch {
     return NextResponse.json({ ok: true, artists: [] });
