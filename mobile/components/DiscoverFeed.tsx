@@ -385,17 +385,6 @@ export function DiscoverFeed({
 
   closeOutRef.current = closeOut;
 
-  // Temporary: diagnosing "scrolling back shows different songs".
-  useEffect(() => {
-    const at = tracks.findIndex((t) => t.trackId === active?.trackId);
-    const around = tracks
-      .slice(Math.max(0, at - 2), at + 3)
-      .map((t, i) => `${Math.max(0, at - 2) + i}${t.trackId === active?.trackId ? "*" : " "}:${t.artist}`)
-      .join(" | ");
-    console.log(`[zuno/list] len=${tracks.length} idx=${activeIndex} at=${at}  ${around}`);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active?.trackId, tracks]);
-
   // Card changed: close out the last one and start the clock on this one.
   useEffect(() => {
     closeOut();
