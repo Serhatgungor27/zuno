@@ -95,6 +95,20 @@ function logInteraction(
   }).catch(() => {});
 }
 
+/**
+ * A much smaller copy of the same cover, for the blurred backdrop.
+ *
+ * Deezer serves covers at 1000x1000 — around 4MB once decoded — and the
+ * backdrop decoded a second full-size copy and ran a CPU blur across all of
+ * it. Blur destroys the detail regardless, so 250x250 is indistinguishable at
+ * radius 30 while costing a sixteenth of the memory and a tenth of the
+ * download. Left alone if the url is not Deezer's.
+ */
+function thumbnail(url: string | null): string | null {
+  if (!url) return null;
+  return url.replace(/\/1000x1000-/, "/250x250-");
+}
+
 /** Survives an async load in a way that pause() does not — see the sync effect. */
 function setMuted(player: AudioPlayer, muted: boolean) {
   try {
@@ -725,7 +739,7 @@ const Card = memo(function Card({
           a second Image forces a real decode each way. */}
       {video && track.albumImage ? (
         <Image
-          source={{ uri: track.albumImage }}
+          source={{ uri: thumbnail(track.albumImage) ?? track.albumImage }}
           style={styles.art}
           blurRadius={30}
         />
