@@ -123,6 +123,12 @@ const SKIMMED = 0.15;
 const SKIP_MS = 4000;
 /** Fast skips of one artist in a session before the feed stops offering them. */
 const SKIPS_BEFORE_DROP = 2;
+/**
+ * A card has to have been on screen this long to count as considered at all.
+ * Flicking through a feed lands on each card for a few hundred milliseconds,
+ * and reading that as rejection made scrolling a way to delete artists.
+ */
+const CONSIDERED_MS = 900;
 
 export function DiscoverFeed({
   refreshKey = 0,
@@ -350,18 +356,26 @@ export function DiscoverFeed({
 
     // React inside the session too. Being shown an artist again right after
     // skipping past them twice is the thing that makes a feed feel deaf.
-    const skimmed = (completion ?? 0) <= SKIMMED && dwellMs < SKIP_MS;
+    const skimmed =
+      (completion ?? 0) <= SKIMMED &&
+      dwellMs >= CONSIDERED_MS &&
+      dwellMs < SKIP_MS;
     if (!skimmed) return;
 
     const artist = watching.track.artist;
     const count = (skipsRef.current.get(artist) ?? 0) + 1;
     skipsRef.current.set(artist, count);
-    if (count >= SKIPS_BEFORE_DROP) {
-      setTracks((prev) =>
-        // Never pull the card underneath them — that shifts everything.
-        prev.filter((t) => t.artist !== artist || t.trackId === active?.trackId)
-      );
-    }
+    if (count < SKIPS_BEFORE_DROP) return;
+
+    setTracks((prev) => {
+      const at = prev.findIndex((t) => t.trackId === active?.trackId);
+      if (at < 0) return prev;
+      // Only ever drop tracks AHEAD. Everything up to and including the
+      // current card is history: removing from it renumbers the list under
+      // the reader, so scrolling back lands somewhere else entirely — which
+      // is not how a feed is allowed to behave.
+      return prev.filter((t, i) => i <= at || t.artist !== artist);
+    });
   }, [player, active?.trackId]);
 
   closeOutRef.current = closeOut;
@@ -580,7 +594,13 @@ export function DiscoverFeed({
       }),
     }).catch(() => {});
 
-    setTracks((prev) => prev.filter((t) => t.artist !== track.artist));
+    setTracks((prev) => {
+      const at = prev.findIndex((t) => t.trackId === track.trackId);
+      if (at < 0) return prev;
+      // From this card forward. Turning an artist down should change what is
+      // coming, not rewrite where you have already been.
+      return prev.filter((t, i) => i < at || t.artist !== track.artist);
+    });
   }, []);
 
   const onReposted = useCallback((trackId: string, next: boolean) => {
