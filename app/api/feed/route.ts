@@ -118,10 +118,28 @@ export async function GET(req: Request) {
 
     const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
-    // Reposts only. Likes are private — a like is somewhere to keep a find,
-    // a repost is the deliberate act of showing it to people. Publishing
-    // likes made the two indistinguishable.
-    const [{ data: reposts }] = await Promise.all([
+    // What people have liked in Discover, rather than what they played.
+    //
+    // A like surfaces here as activity but is NOT browsable on a profile:
+    // followers see what someone is into now, and nobody can open a stranger
+    // and scroll their entire history of taps. The Liked tab is the owner's
+    // alone.
+    //
+    // Plays came from polling Spotify's now-playing, which stopped when
+    // Spotify was retired as a login — the newest row in listening_history is
+    // months old, so the feed was showing an archive and calling it activity.
+    // Likes are produced by ordinary use of the app and need no external
+    // account, so the feed is live again.
+    const [{ data: likes }, { data: reposts }] = await Promise.all([
+      byAuthId.size > 0
+        ? supabase
+            .from("discover_likes")
+            .select("id, user_id, track_id, track_name, artist, album_image, spotify_url, created_at")
+            .in("user_id", [...byAuthId.keys()])
+            .gte("created_at", since)
+            .order("created_at", { ascending: false })
+            .limit(60)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
       byAuthId.size > 0
         ? supabase
             .from("reposts")
@@ -135,7 +153,7 @@ export async function GET(req: Request) {
 
     type Item = {
       id: string;
-      kind: "repost";
+      kind: "like" | "repost";
       trackId: string | null;
       track: string;
       artist: string;
@@ -148,6 +166,24 @@ export async function GET(req: Request) {
     };
 
     const items: Item[] = [];
+
+    for (const l of likes ?? []) {
+      const u = byAuthId.get(l.user_id as string);
+      if (!u) continue;
+      items.push({
+        id: `like:${l.id}`,
+        kind: "like",
+        trackId: l.track_id as string,
+        track: (l.track_name as string | null) ?? "",
+        artist: (l.artist as string | null) ?? "",
+        albumImage: l.album_image as string | null,
+        trackUrl: l.spotify_url as string | null,
+        at: l.created_at as string,
+        userName: (u.display_name as string | null) ?? "Unknown",
+        userImage: u.image as string | null,
+        userHandle: (u.username as string | null) ?? (u.spotify_id as string),
+      });
+    }
 
     for (const r of reposts ?? []) {
       const u = byAuthId.get(r.user_id as string);

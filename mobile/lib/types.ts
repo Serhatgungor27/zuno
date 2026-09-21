@@ -110,7 +110,10 @@ export type VibeComment = {
 };
 
 /** GET /api/discover/like */
-/** Private to the owner — never returned for another user's profile. */
+/**
+ * The owner's own liked tracks. Surfaced to followers as activity in the
+ * Following feed, but never as a browsable section of a public profile.
+ */
 export type LikedTrack = {
   trackId: string;
   name: string;
@@ -218,7 +221,7 @@ export type TrendingTrack = {
 /** GET /api/feed?type=following_feed */
 export type FollowingItem = {
   id: string;
-  kind: "repost";
+  kind: "like" | "repost";
   trackId: string | null;
   track: string;
   artist: string;

@@ -287,7 +287,7 @@ function ListFeed({
           appleUrl: null as string | null,
           openUrl: null as string | null,
           // Says who, and whether they played it or reposted it.
-          meta: `${f.userName} reposted`,
+          meta: `${f.userName} ${f.kind === "repost" ? "reposted" : "liked"}`,
           preview: null as string | null,
         }))
       : trending.map((t) => ({
