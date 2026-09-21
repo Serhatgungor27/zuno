@@ -19,7 +19,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Scrubber } from "./Scrubber";
-import { CommentsSheet } from "./CommentsSheet";
 import { api } from "../lib/api";
 import { theme } from "../lib/theme";
 
@@ -36,12 +35,6 @@ export type NowPlaying = {
   appleUrl?: string | null;
   /** Identifies the track for likes and reposts. */
   historyId?: string;
-  /**
-   * True only when historyId is a real listening_history row — i.e. somebody
-   * actually played this. Chart and Discover rows carry a catalogue id there
-   * instead, and a comment thread hung off one of those belongs to nothing.
-   */
-  canComment?: boolean;
 };
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
@@ -221,8 +214,6 @@ function Rail({ track }: { track: NowPlaying }) {
   const [liked, setLiked] = useState(false);
   const [reposted, setReposted] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
-  const [commentCount, setCommentCount] = useState<number | null>(null);
 
   const id = track.historyId;
 
@@ -296,24 +287,7 @@ function Rail({ track }: { track: NowPlaying }) {
         tint={reposted ? "#4ade80" : "#fff"}
         onPress={() => void toggleRepost()}
       />
-      {track.canComment && id ? (
-        <RailButton
-          icon="chatbubble-outline"
-          tint="#fff"
-          label={commentCount ? String(commentCount) : undefined}
-          onPress={() => setCommentsOpen(true)}
-        />
-      ) : null}
       <RailButton icon="share-social-outline" tint="#fff" onPress={share} />
-
-      {track.canComment && id ? (
-        <CommentsSheet
-          historyId={id}
-          visible={commentsOpen}
-          onClose={() => setCommentsOpen(false)}
-          onCountChange={setCommentCount}
-        />
-      ) : null}
     </View>
   );
 }

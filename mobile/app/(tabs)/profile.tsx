@@ -23,7 +23,6 @@ import { useAuth } from "../../lib/auth";
 import { theme } from "../../lib/theme";
 import type {
   FollowStats,
-  HistoryTrack,
   Repost,
   Taste,
   ZunoUser,
@@ -36,7 +35,7 @@ const TILE = (Dimensions.get("window").width - GUTTER * 2) / 3;
 // without anyone having to try it.
 const SHELF_CARD_W = Math.round((Dimensions.get("window").width - 32 - 20) / 2.4);
 
-type TabKey = "vibes" | "reposts" | "taste";
+type TabKey = "reposts" | "taste";
 
 type Me = { ok: boolean; username: string; avatar_url: string | null };
 
@@ -47,11 +46,10 @@ export default function Profile() {
   const [me, setMe] = useState<Me | null>(null);
   const [user, setUser] = useState<ZunoUser | null>(null);
   const [follow, setFollow] = useState<FollowStats | null>(null);
-  const [vibes, setVibes] = useState<HistoryTrack[]>([]);
   const [reposts, setReposts] = useState<Repost[]>([]);
   const [taste, setTaste] = useState<Taste | null>(null);
 
-  const [tab, setTab] = useState<TabKey>("vibes");
+  const [tab, setTab] = useState<TabKey>("reposts");
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [playingKey, setPlayingKey] = useState<string | undefined>(undefined);
   const player = useAudioPlayer(null);
@@ -89,19 +87,15 @@ export default function Profile() {
 
       const spotifyHandle = account?.user?.username ?? account?.user?.spotify_id;
 
-      const [f, h, r, t] = await Promise.all([
+      const [f, r, t] = await Promise.all([
         spotifyHandle
           ? api<FollowStats>(`/api/follow?userId=${encodeURIComponent(spotifyHandle)}`).catch(() => null)
-          : null,
-        spotifyHandle
-          ? api<{ tracks: HistoryTrack[] }>(`/api/history?userId=${encodeURIComponent(spotifyHandle)}`).catch(() => null)
           : null,
         api<{ reposts: Repost[] }>(`/api/repost?username=${encodeURIComponent(profile.username)}`).catch(() => null),
         api<Taste>("/api/taste").catch(() => null),
       ]);
 
       setFollow(f);
-      setVibes(h?.tracks ?? []);
       setReposts(r?.reposts ?? []);
       setTaste(t);
       setError(null);
@@ -138,7 +132,6 @@ export default function Profile() {
         // The vibe itself, not the catalogue track — likes and comments hang
         // off the play, not the song.
         historyId: item.historyId ?? item.trackId,
-        canComment: !!item.historyId,
       });
       try {
         const params = new URLSearchParams({ track: item.label, artist: item.artist });
@@ -229,8 +222,6 @@ export default function Profile() {
             label="Followers"
             onPress={handle ? () => router.push(`/follows?user=${encodeURIComponent(handle)}&type=followers` as never) : undefined}
           />
-          <View style={styles.statDivider} />
-          <Stat value={vibes.length} label="Vibes" />
         </View>
 
         <Pressable
@@ -244,7 +235,6 @@ export default function Profile() {
       </View>
 
       <View style={styles.tabs}>
-        <TabButton icon="grid" label="Vibes" active={tab === "vibes"} onPress={() => setTab("vibes")} />
         <TabButton icon="repeat" label="Reposts" active={tab === "reposts"} onPress={() => setTab("reposts")} />
         <TabButton icon="heart" label="Taste" active={tab === "taste"} onPress={() => setTab("taste")} />
       </View>
@@ -252,23 +242,7 @@ export default function Profile() {
       <View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {tab === "vibes" ? (
-        <Grid
-          items={vibes.map((v) => ({
-            key: v.track_id + v.played_at,
-            image: v.album_image,
-            label: v.track_name,
-            artist: v.artist,
-            trackId: v.track_id,
-            historyId: v.id,
-            spotifyUrl: v.track_url,
-          }))}
-          emptyTitle="No vibes yet"
-          emptyBody="Your listening history will appear here."
-          onPress={playTrack}
-          playingKey={playingKey}
-        />
-      ) : tab === "reposts" ? (
+      {tab === "reposts" ? (
         <Grid
           items={reposts.map((r) => ({
             key: r.id,
@@ -294,7 +268,6 @@ export default function Profile() {
         which collapsed the row. */}
     {scrollY >= headerHeight && headerHeight > 0 ? (
       <View style={[styles.tabs, styles.tabsPinned, { top: insets.top }]}>
-        <TabButton icon="grid" label="Vibes" active={tab === "vibes"} onPress={() => setTab("vibes")} />
         <TabButton icon="repeat" label="Reposts" active={tab === "reposts"} onPress={() => setTab("reposts")} />
         <TabButton icon="heart" label="Taste" active={tab === "taste"} onPress={() => setTab("taste")} />
       </View>

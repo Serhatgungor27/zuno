@@ -72,7 +72,7 @@ export type FollowStats = {
   isSelf: boolean;
 };
 
-/** GET /api/history?userId= — the "Vibes" grid. */
+/** GET /api/history?userId= — no longer surfaced; Spotify polling ended. */
 export type HistoryTrack = {
   /** The listening_history row — what likes and comments key on. */
   id: string;
@@ -186,9 +186,7 @@ export type TrendingTrack = {
 /** GET /api/feed?type=following_feed */
 export type FollowingItem = {
   id: string;
-  kind: "vibe" | "repost";
-  /** The vibe this refers to; null on a repost of something since removed. */
-  historyId: string | null;
+  kind: "like" | "repost";
   trackId: string | null;
   track: string;
   artist: string;

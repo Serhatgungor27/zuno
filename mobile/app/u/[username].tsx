@@ -20,12 +20,12 @@ import { TAB_BAR_CLEARANCE } from "../../components/TabBar";
 import { api } from "../../lib/api";
 import { onTabBarScroll, resetTabBar } from "../../lib/tabBarScroll";
 import { theme } from "../../lib/theme";
-import type { FollowStats, HistoryTrack, PublicProfile, Repost } from "../../lib/types";
+import type { FollowStats, PublicProfile, Repost } from "../../lib/types";
 
 const GUTTER = 2;
 const TILE = (Dimensions.get("window").width - GUTTER * 2) / 3;
 
-type TabKey = "vibes" | "reposts";
+type TabKey = "reposts";
 type GridItem = {
   key: string;
   /** The listening_history row, when this tile is a real play. */
@@ -43,9 +43,8 @@ export default function UserProfile() {
 
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [follow, setFollow] = useState<FollowStats | null>(null);
-  const [vibes, setVibes] = useState<HistoryTrack[]>([]);
   const [reposts, setReposts] = useState<Repost[]>([]);
-  const [tab, setTab] = useState<TabKey>("vibes");
+  const [tab, setTab] = useState<TabKey>("reposts");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -76,13 +75,11 @@ export default function UserProfile() {
       );
       setProfile(p);
       const handle = p.username ?? p.id;
-      const [f, h, r] = await Promise.all([
+      const [f, r] = await Promise.all([
         api<FollowStats>(`/api/follow?userId=${encodeURIComponent(handle)}`).catch(() => null),
-        api<{ tracks: HistoryTrack[] }>(`/api/history?userId=${encodeURIComponent(handle)}`).catch(() => null),
         api<{ reposts: Repost[] }>(`/api/repost?username=${encodeURIComponent(handle)}`).catch(() => null),
       ]);
       setFollow(f);
-      setVibes(h?.tracks ?? []);
       setReposts(r?.reposts ?? []);
       setError(null);
     } catch (e) {
@@ -127,7 +124,6 @@ export default function UserProfile() {
         url: null,
         spotifyUrl: item.spotifyUrl ?? null,
         historyId: item.historyId ?? item.trackId,
-        canComment: !!item.historyId,
       });
       try {
         const params = new URLSearchParams({ track: item.label, artist: item.artist });
@@ -170,17 +166,7 @@ export default function UserProfile() {
   }
 
   const items: GridItem[] =
-    tab === "vibes"
-      ? vibes.map((v) => ({
-          key: v.track_id + v.played_at,
-          image: v.album_image,
-          label: v.track_name,
-          artist: v.artist,
-          trackId: v.track_id,
-          historyId: v.id,
-          spotifyUrl: v.track_url,
-        }))
-      : reposts.map((r) => ({
+    reposts.map((r) => ({
           key: r.id,
           image: r.album_image,
           label: r.track_name,
@@ -237,8 +223,6 @@ export default function UserProfile() {
               label="Followers"
               onPress={() => router.push(`/follows?user=${encodeURIComponent(username)}&type=followers` as never)}
             />
-            <View style={styles.statDivider} />
-            <Stat value={vibes.length} label="Vibes" />
           </View>
 
           {follow?.isSelf ? null : (
@@ -258,14 +242,13 @@ export default function UserProfile() {
         </View>
 
         <View style={styles.tabs}>
-          <TabButton label="Vibes" icon="grid" active={tab === "vibes"} onPress={() => setTab("vibes")} />
           <TabButton label="Reposts" icon="repeat" active={tab === "reposts"} onPress={() => setTab("reposts")} />
         </View>
 
         {items.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>
-              {tab === "vibes" ? "No vibes yet" : "No reposts yet"}
+              "No reposts yet"
             </Text>
           </View>
         ) : (

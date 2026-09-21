@@ -224,8 +224,6 @@ function ListFeed({
       /** A real Spotify link, or null when the source has none. */
       spotifyUrl?: string | null;
       appleUrl?: string | null;
-      /** Set only for a real vibe; chart rows have nothing to comment on. */
-      historyId?: string;
       preview?: string | null;
     }) => {
       setNowPlaying({
@@ -235,8 +233,7 @@ function ListFeed({
         url: null,
         spotifyUrl: item.spotifyUrl ?? null,
         appleUrl: item.appleUrl ?? null,
-        historyId: item.historyId ?? item.trackId,
-        canComment: !!item.historyId,
+        historyId: item.trackId,
       });
       try {
         if (item.preview) {
@@ -285,14 +282,12 @@ function ListFeed({
           image: f.albumImage,
           trackId: f.trackId ?? undefined,
           url: f.trackUrl,
-          // The vibe itself — what a comment thread hangs off.
-          historyId: f.historyId ?? undefined,
-          // Vibes and reposts carry the real Spotify link they were played from.
+          // Likes and reposts carry the Spotify link they were saved with.
           spotifyUrl: f.trackUrl,
           appleUrl: null as string | null,
           openUrl: null as string | null,
           // Says who, and whether they played it or reposted it.
-          meta: `${f.userName} ${f.kind === "repost" ? "reposted" : "vibed"}`,
+          meta: `${f.userName} ${f.kind === "repost" ? "reposted" : "liked"}`,
           preview: null as string | null,
         }))
       : trending.map((t) => ({
@@ -302,7 +297,6 @@ function ListFeed({
           image: t.albumImage,
           trackId: t.trackId,
           url: t.sourceUrl,
-          historyId: undefined as string | undefined,
           // A chart row has no Spotify link. Leaving this null lets the sheet
           // fall back to a Spotify search for the track, instead of opening
           // Deezer or Apple Music from a button that says Spotify.

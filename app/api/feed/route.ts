@@ -118,14 +118,23 @@ export async function GET(req: Request) {
 
     const since = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [{ data: plays }, { data: reposts }] = await Promise.all([
-      supabase
-        .from("listening_history")
-        .select("id, track_id, track_name, artist, album_image, track_url, played_at, user_spotify_id")
-        .in("user_spotify_id", visibleIds)
-        .gte("played_at", since)
-        .order("played_at", { ascending: false })
-        .limit(60),
+    // What people have liked in Discover, rather than what they played.
+    //
+    // Plays came from polling Spotify's now-playing, which stopped when
+    // Spotify was retired as a login — the newest row in listening_history is
+    // months old, so the feed was showing an archive and calling it activity.
+    // Likes are produced by ordinary use of the app and need no external
+    // account, so the feed is live again.
+    const [{ data: likes }, { data: reposts }] = await Promise.all([
+      byAuthId.size > 0
+        ? supabase
+            .from("discover_likes")
+            .select("id, user_id, track_id, track_name, artist, album_image, spotify_url, created_at")
+            .in("user_id", [...byAuthId.keys()])
+            .gte("created_at", since)
+            .order("created_at", { ascending: false })
+            .limit(60)
+        : Promise.resolve({ data: [] as Record<string, unknown>[] }),
       byAuthId.size > 0
         ? supabase
             .from("reposts")
@@ -139,9 +148,7 @@ export async function GET(req: Request) {
 
     type Item = {
       id: string;
-      kind: "vibe" | "repost";
-      /** The listening_history row this refers to — what comments key on. */
-      historyId: string | null;
+      kind: "like" | "repost";
       trackId: string | null;
       track: string;
       artist: string;
@@ -155,19 +162,18 @@ export async function GET(req: Request) {
 
     const items: Item[] = [];
 
-    for (const p of plays ?? []) {
-      const u = bySpotifyId.get(p.user_spotify_id as string);
+    for (const l of likes ?? []) {
+      const u = byAuthId.get(l.user_id as string);
       if (!u) continue;
       items.push({
-        id: `vibe:${p.id}`,
-        kind: "vibe",
-        historyId: p.id as string,
-        trackId: p.track_id as string,
-        track: p.track_name as string,
-        artist: p.artist as string,
-        albumImage: p.album_image as string | null,
-        trackUrl: p.track_url as string | null,
-        at: p.played_at as string,
+        id: `like:${l.id}`,
+        kind: "like",
+        trackId: l.track_id as string,
+        track: (l.track_name as string | null) ?? "",
+        artist: (l.artist as string | null) ?? "",
+        albumImage: l.album_image as string | null,
+        trackUrl: l.spotify_url as string | null,
+        at: l.created_at as string,
         userName: (u.display_name as string | null) ?? "Unknown",
         userImage: u.image as string | null,
         userHandle: (u.username as string | null) ?? (u.spotify_id as string),
@@ -180,7 +186,6 @@ export async function GET(req: Request) {
       items.push({
         id: `repost:${r.id}`,
         kind: "repost",
-        historyId: (r.history_id as string | null) ?? null,
         trackId: (r.history_id as string) ?? null,
         track: r.track_name as string,
         artist: r.artist as string,
