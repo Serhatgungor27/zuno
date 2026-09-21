@@ -95,6 +95,15 @@ function logInteraction(
   }).catch(() => {});
 }
 
+/** Survives an async load in a way that pause() does not — see the sync effect. */
+function setMuted(player: AudioPlayer, muted: boolean) {
+  try {
+    player.muted = muted;
+  } catch {
+    // Nothing loaded yet; the property sticks for when it is.
+  }
+}
+
 /** Below this much played, and gone quickly, counts as a rejection. */
 const SKIMMED = 0.15;
 const SKIP_MS = 4000;
@@ -362,7 +371,10 @@ export function DiscoverFeed({
       // If the lookahead already found a video for this track, the video is
       // about to carry the sound. Starting the preview here would play the
       // song twice for the second it takes the video to load.
-      if (!videoUrls.get(active.trackId)) player.play();
+      if (!videoUrls.get(active.trackId)) {
+        setMuted(player, false);
+        player.play();
+      }
     } catch {
       // A source that fails to load shouldn't take the screen down with it.
     }
@@ -430,12 +442,21 @@ export function DiscoverFeed({
 
     // The video carries the sound when there is one, so the preview stands
     // down. Playing both was what let the pause button silence only half.
+    //
+    // Muted as well as paused. player.replace() loads asynchronously and a
+    // play() issued against a still-loading source is queued, so a pause that
+    // arrives while it is loading is simply lost — the queued play wins once
+    // loading finishes and the song is heard twice, once from the preview and
+    // once from the video. Mute is a property, so it holds whenever playback
+    // actually begins.
     if (videoUrl) {
+      setMuted(player, true);
       quiet(player);
       video.play();
       return;
     }
 
+    setMuted(player, false);
     quiet(video);
     player.play();
   }, [isActive, focused, player, video, videoUrl, tracks.length]);

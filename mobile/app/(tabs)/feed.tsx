@@ -84,7 +84,7 @@ export default function Feed() {
         }}
       >
         <View style={styles.page}>
-          <ListFeed tab="following" />
+          <ListFeed tab="following" isActive={tab === "following"} />
         </View>
         <View style={styles.page}>
           {/* Paused when swiped away from, or it keeps playing behind the
@@ -96,7 +96,7 @@ export default function Feed() {
           />
         </View>
         <View style={styles.page}>
-          <ListFeed tab="trending" />
+          <ListFeed tab="trending" isActive={tab === "trending"} />
         </View>
       </ScrollView>
 
@@ -141,7 +141,14 @@ export default function Feed() {
 }
 
 /** Vibe and Trending are both lists of tracks, differing only in source. */
-function ListFeed({ tab }: { tab: "following" | "trending" }) {
+function ListFeed({
+  tab,
+  isActive,
+}: {
+  tab: "following" | "trending";
+  /** False while the pager is showing one of the other two tabs. */
+  isActive: boolean;
+}) {
   const insets = useSafeAreaInsets();
   const [following, setFollowing] = useState<FollowingItem[]>([]);
   const [trending, setTrending] = useState<ChartRow[]>([]);
@@ -156,6 +163,17 @@ function ListFeed({ tab }: { tab: "following" | "trending" }) {
 
   // Leaving this screen for another tab doesn't unmount it, so the preview
   // would otherwise keep playing over whatever you opened next.
+  // Swiping to another tab does not unmount this list, so without this a
+  // track started here keeps playing under Discover — two songs at once.
+  useEffect(() => {
+    if (isActive) return;
+    try {
+      player.pause();
+    } catch {
+      // Nothing loaded.
+    }
+  }, [isActive, player]);
+
   useFocusEffect(
     useCallback(() => {
       return () => {
