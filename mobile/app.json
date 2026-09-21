@@ -31,7 +31,15 @@
       "expo-web-browser",
       "expo-status-bar",
       "expo-audio",
-      "expo-video"
+      "expo-video",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "backgroundColor": "#000000",
+          "imageWidth": 180
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
