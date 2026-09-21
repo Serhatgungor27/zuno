@@ -143,11 +143,13 @@ export function Scrubber({
 
 const styles = StyleSheet.create({
   scrubRow: { height: 22, justifyContent: "center" },
-  progressTrack: { height: 2, backgroundColor: "rgba(255,255,255,0.55)" },
+  // White played, grey remaining. The blue read as Spotify-adjacent and the
+  // track was light enough that the fill barely separated from it.
+  progressTrack: { height: 2, backgroundColor: "rgba(255,255,255,0.28)" },
   progressFill: {
     height: 2,
     width: "100%",
-    backgroundColor: "#2d6cf6",
+    backgroundColor: "#ffffff",
     transformOrigin: "left",
   },
   knob: {
