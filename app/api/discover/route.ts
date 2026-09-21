@@ -340,7 +340,19 @@ export async function GET(req: Request) {
         dislikes: (dislikes.data ?? []) as { artist: string | null }[],
         stated: (profile?.favorite_artists as string[] | null) ?? [],
       });
-      if (affinity.artists.length) seedPool = affinity.artists;
+      // Alternate named favourites with measured ones, so the profile always
+      // shapes the feed no matter how much browsing sits on top of it.
+      // Ranking alone let a day of watching bury four artists added minutes
+      // earlier, and "I changed my favourites and nothing changed" is the
+      // clearest way to make taste settings feel fake.
+      const stated = ((profile?.favorite_artists as string[] | null) ?? []).filter(Boolean);
+      const interleaved: string[] = [];
+      for (let i = 0; i < Math.max(stated.length, affinity.artists.length); i++) {
+        if (stated[i]) interleaved.push(stated[i]);
+        if (affinity.artists[i]) interleaved.push(affinity.artists[i]);
+      }
+      const merged = [...new Set(interleaved)];
+      if (merged.length) seedPool = merged;
       blockedFromAffinity = affinity.blocked;
     } catch {
       // Scoring is an improvement, not a dependency — fall back to the client.

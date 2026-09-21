@@ -45,6 +45,13 @@ const SKIP_MS = 4000;
  */
 const HALF_LIFE_DAYS = 14;
 
+/**
+ * What an artist named in the profile is worth. Deliberately larger than any
+ * plausible pile of views: naming someone is a statement of intent, watching
+ * something is a datapoint.
+ */
+const STATED_WEIGHT = 60;
+
 function decay(createdAt: string, now: number): number {
   const ageDays = (now - new Date(createdAt).getTime()) / 86_400_000;
   if (!Number.isFinite(ageDays) || ageDays < 0) return 1;
@@ -115,7 +122,11 @@ export function artistAffinity({
     scores.set(name, (scores.get(name) ?? 0) + by);
   };
 
-  stated.forEach((name, i) => bump(name, 6 - Math.min(i, 3)));
+  // Weighted far above any amount of browsing. At six, an artist watched ten
+  // times outscored one the listener had just gone into their profile and
+  // named — so changing your favourites did nothing, which is the opposite of
+  // what editing them is for.
+  stated.forEach((name, i) => bump(name, STATED_WEIGHT - Math.min(i, 3)));
 
   for (const row of interactions) {
     const value = scoreRow(row);
