@@ -7,6 +7,7 @@ import {
   type AudioPlayer,
 } from "expo-audio";
 import * as Linking from "expo-linking";
+import { Image } from "expo-image";
 import { useFocusEffect } from "expo-router";
 import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
@@ -14,7 +15,6 @@ import {
   ActivityIndicator,
   Dimensions,
   FlatList,
-  Image,
   Pressable,
   Share,
   StyleSheet,
@@ -751,7 +751,14 @@ const Card = memo(function Card({
   return (
     <Pressable onPress={onToggle} style={[styles.card, { height: cardH }]}>
       {track.albumImage ? (
-        <Image source={{ uri: track.albumImage }} style={styles.art} />
+        <Image
+          source={{ uri: track.albumImage }}
+          style={styles.art}
+          // Without this the recycled row shows the previous card's cover
+          // until the new one decodes.
+          recyclingKey={track.trackId}
+          transition={120}
+        />
       ) : (
         <View style={[styles.art, styles.artFallback]} />
       )}
@@ -768,6 +775,7 @@ const Card = memo(function Card({
           source={{ uri: thumbnail(track.albumImage) ?? track.albumImage }}
           style={styles.art}
           blurRadius={30}
+          recyclingKey={track.trackId}
         />
       ) : null}
 

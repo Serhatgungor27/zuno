@@ -1,9 +1,9 @@
 import { router, useLocalSearchParams } from "expo-router";
+import { Image } from "expo-image";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Pressable,
   StyleSheet,
   Text,

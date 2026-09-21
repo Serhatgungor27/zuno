@@ -1,12 +1,12 @@
 import { FontAwesome, Ionicons } from "@expo/vector-icons";
 import { useAudioPlayerStatus, type AudioPlayer } from "expo-audio";
+import { Image } from "expo-image";
 import * as Linking from "expo-linking";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
   Dimensions,
-  Image,
   Modal,
   PanResponder,
   Pressable,
