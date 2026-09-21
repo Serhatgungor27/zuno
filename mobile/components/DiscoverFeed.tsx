@@ -45,6 +45,9 @@ const PAGES = 5;
 const PREFETCH = 3;
 
 type Prefs = { genres: string[]; artists: string[]; excludeArtists: string[] };
+
+/** How many already-loaded ids to hold back, so a new page is actually new. */
+const EXCLUDE_CAP = 150;
 type LikedResponse = { tracks: { trackId: string; artist: string }[] };
 type RepostResponse = { reposts: { history_id: string | null }[] };
 type VideoResponse = { videoUrl: string | null };
@@ -107,6 +110,34 @@ function logInteraction(
 function thumbnail(url: string | null): string | null {
   if (!url) return null;
   return url.replace(/\/1000x1000-/, "/250x250-");
+}
+
+/**
+ * The Discover request. Shared by the first load and by every page after it,
+ * so a later page asks on the same terms as the first.
+ */
+function buildQuery(
+  prefs: Prefs,
+  loadedIds: string[],
+  likedIds: string[] = [],
+  dislikedIds: string[] = [],
+  page = 0
+) {
+  const params = new URLSearchParams({ page: String(page) });
+  // Defaulted rather than read straight off `prefs`: a Fast Refresh can hand
+  // back a prefs object shaped by an older version of this file.
+  const genres = prefs.genres ?? [];
+  const artists = prefs.artists ?? [];
+  const excludeArtists = prefs.excludeArtists ?? [];
+  if (genres.length) params.set("genres", genres.join(","));
+  if (artists.length) params.set("artists", artists.join(","));
+  if (excludeArtists.length) params.set("excludeArtists", excludeArtists.join(","));
+
+  // Everything already on screen is held back as well as everything liked or
+  // turned down — without that, page two is largely page one again.
+  const exclude = [...loadedIds, ...likedIds, ...dislikedIds].slice(-EXCLUDE_CAP);
+  if (exclude.length) params.set("excludeIds", exclude.join(","));
+  return params.toString();
 }
 
 /** Survives an async load in a way that pause() does not — see the sync effect. */
@@ -306,21 +337,9 @@ export function DiscoverFeed({
       pageRef.current = (pageRef.current + 1 + Math.floor(Math.random() * (PAGES - 1))) % PAGES;
     }
     setLoading(true);
-    const params = new URLSearchParams({ page: String(pageRef.current) });
-    // Defaulted rather than read straight off `prefs`: a Fast Refresh can hand
-    // back a prefs object shaped by an older version of this file.
-    const genres = prefs.genres ?? [];
-    const artists = prefs.artists ?? [];
-    const excludeArtists = prefs.excludeArtists ?? [];
-    if (genres.length) params.set("genres", genres.join(","));
-    if (artists.length) params.set("artists", artists.join(","));
-    if (excludeArtists.length) params.set("excludeArtists", excludeArtists.join(","));
-    // Read from the refs, not state: a reload right after liking should drop
-    // what you just liked, but liking alone must not refetch.
-    const exclude = [...likedRef.current, ...dislikedRef.current].slice(0, 120);
-    if (exclude.length) params.set("excludeIds", exclude.join(","));
-
-    api<DiscoverResponse>(`/api/discover?${params}`)
+    api<DiscoverResponse>(
+      `/api/discover?${buildQuery(prefs, [], [...likedRef.current], [...dislikedRef.current], pageRef.current)}`
+    )
       .then((data) => {
         setTracks((data.tracks ?? []).filter((t) => t.previewUrl));
         setActiveIndex(0);
@@ -467,6 +486,43 @@ export function DiscoverFeed({
       video.play();
     }
   });
+
+  /**
+   * Fetch the next page and append it.
+   *
+   * The feed used to load sixty tracks and simply stop — scroll far enough
+   * and it ran out, which no feed is allowed to do. Each page asks on the
+   * same terms and holds back everything already on screen, so it is new
+   * material rather than the same batch reshuffled.
+   */
+  const loadingMoreRef = useRef(false);
+  const loadMore = useCallback(async () => {
+    if (loadingMoreRef.current || !prefs || tracks.length === 0) return;
+    loadingMoreRef.current = true;
+    try {
+      pageRef.current = (pageRef.current + 1) % PAGES;
+      const data = await api<DiscoverResponse>(
+        `/api/discover?${buildQuery(
+          prefs,
+          tracks.map((t) => t.trackId),
+          [...likedRef.current],
+          [...dislikedRef.current],
+          pageRef.current
+        )}`
+      );
+      setTracks((prev) => {
+        const have = new Set(prev.map((t) => t.trackId));
+        const fresh = (data.tracks ?? []).filter(
+          (t) => t.previewUrl && !have.has(t.trackId)
+        );
+        return fresh.length ? [...prev, ...fresh] : prev;
+      });
+    } catch {
+      // A failed page is not worth surfacing; the next scroll tries again.
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, [prefs, tracks]);
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 80 }).current;
   const onViewableItemsChanged = useRef(
@@ -704,6 +760,9 @@ export function DiscoverFeed({
         offset: cardH * index,
         index,
       })}
+      onEndReached={() => void loadMore()}
+      // Two screens of runway, so the next page is already there.
+      onEndReachedThreshold={2}
       scrollEnabled={!scrubbing}
       // Without this, rows keep whatever props they were last rendered with:
       // VirtualizedList only re-renders cells when `data` or `extraData`

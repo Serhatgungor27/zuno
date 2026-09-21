@@ -79,15 +79,105 @@ async function spotify(path: string, token: string) {
   return res.ok ? res.json() : null;
 }
 
+/**
+ * Deezer, used when Spotify has no credentials configured.
+ *
+ * Its ranking is poor outside the mainstream — this is the path that put
+ * Diyar Dersim at result 43 — but it needs no token and it works.
+ */
+async function deezerFallback(id: string | null, q: string | undefined) {
+  try {
+    if (id) {
+      const base = `https://api.deezer.com/artist/${encodeURIComponent(id)}`;
+      const [aRes, albumsRes] = await Promise.all([
+        fetch(base, { cache: "no-store" }),
+        fetch(`${base}/albums?limit=${MAX_ALBUMS}`, { cache: "no-store" }),
+      ]);
+      if (!aRes.ok) {
+        return NextResponse.json({ ok: false, error: "artist_not_found" }, { status: 404 });
+      }
+      const artist = await aRes.json();
+      const albums = albumsRes.ok ? ((await albumsRes.json()).data ?? []) : [];
+
+      const tracks = (
+        await Promise.all(
+          (albums as { id: number }[]).slice(0, MAX_ALBUMS).map(async (al) => {
+            try {
+              const r = await fetch(`https://api.deezer.com/album/${al.id}/tracks?limit=100`, {
+                cache: "no-store",
+              });
+              return r.ok ? ((await r.json()).data ?? []) : [];
+            } catch {
+              return [];
+            }
+          })
+        )
+      ).flat() as { id: number; title: string; preview?: string; duration?: number; explicit_lyrics?: boolean }[];
+
+      const seen = new Set<string>();
+      const ordered = tracks.filter((t) => {
+        if (!t.preview) return false;
+        const key = t.title.toLowerCase().replace(/[^a-z0-9]/g, "");
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      }).slice(0, MAX_TRACKS);
+
+      return NextResponse.json({
+        ok: true,
+        artist: {
+          id: String(artist.id),
+          name: artist.name,
+          image: artist.picture_xl ?? artist.picture_big ?? null,
+          fans: artist.nb_fan ?? 0,
+        },
+        tracks: ordered.map((t) => ({
+          trackId: String(t.id),
+          name: t.title,
+          artist: artist.name,
+          albumImage: artist.picture_xl ?? null,
+          previewUrl: t.preview ?? null,
+          deezerUrl: null,
+          spotifyUrl: null,
+          durationMs: (t.duration ?? 0) * 1000,
+          explicit: t.explicit_lyrics ?? false,
+        })),
+      });
+    }
+
+    if (!q || q.length < 2) return NextResponse.json({ ok: true, artists: [] });
+
+    const res = await fetch(
+      `https://api.deezer.com/search/artist?q=${encodeURIComponent(q)}&limit=50`,
+      { cache: "no-store" }
+    );
+    const list = res.ok ? ((await res.json()).data ?? []) : [];
+    return NextResponse.json({
+      ok: true,
+      artists: (list as { id: number; name: string; picture_xl?: string; nb_fan?: number }[]).map(
+        (a) => ({
+          id: String(a.id),
+          name: a.name,
+          image: a.picture_xl ?? null,
+          fans: a.nb_fan ?? 0,
+        })
+      ),
+    });
+  } catch {
+    return NextResponse.json({ ok: true, artists: [], tracks: [] });
+  }
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   const q = searchParams.get("q")?.trim();
 
+  // Spotify ranks these correctly, but its credentials are optional here:
+  // they were provisioned for the retired OAuth login and may not be set.
+  // Deezer still answers, just less well, and a worse ranking beats a 503.
   const token = await getAppToken();
-  if (!token) {
-    return NextResponse.json({ ok: false, error: "spotify_unavailable" }, { status: 503 });
-  }
+  if (!token) return deezerFallback(id, q);
 
   if (id) {
     const artist = (await spotify(`/artists/${encodeURIComponent(id)}`, token)) as SpotifyArtist | null;
