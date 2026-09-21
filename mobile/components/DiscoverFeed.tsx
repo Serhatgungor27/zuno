@@ -210,6 +210,8 @@ export function DiscoverFeed({
   // Set when the card is paused by a tap, so the readiness handler below does
   // not immediately undo it. Cleared on every new card.
   const pausedByUserRef = useRef(false);
+  // Read inside stable callbacks that must not change identity per render.
+  const tracksRef = useRef<DiscoverTrack[]>([]);
   /**
    * Every track that has been the active card. Nothing in here may ever be
    * removed from the list.
@@ -352,6 +354,8 @@ export function DiscoverFeed({
       )
       .finally(() => setLoading(false));
   }, [refreshKey, prefs]);
+
+  tracksRef.current = tracks;
 
   const active = tracks[activeIndex];
 
@@ -663,9 +667,24 @@ export function DiscoverFeed({
 
     // Only what has not been seen. Turning an artist down changes what is
     // coming; it must not renumber the cards already behind the reader.
-    setTracks((prev) =>
-      prev.filter((t) => seenRef.current.has(t.trackId) || t.artist !== track.artist)
+    const next = tracksRef.current.filter(
+      (t) => seenRef.current.has(t.trackId) || t.artist !== track.artist
     );
+    setTracks(next);
+
+    // Move on. The card being turned down has itself been seen, so it stays
+    // in the list — which meant tapping the button appeared to do nothing at
+    // all. "Not for me" should advance.
+    const at = next.findIndex((t) => t.trackId === track.trackId);
+    if (at >= 0 && at + 1 < next.length) {
+      requestAnimationFrame(() => {
+        try {
+          listRef.current?.scrollToIndex({ index: at + 1, animated: true });
+        } catch {
+          // Off-screen rows can refuse; the next swipe handles it.
+        }
+      });
+    }
   }, []);
 
   const onReposted = useCallback((trackId: string, next: boolean) => {
@@ -763,6 +782,11 @@ export function DiscoverFeed({
         offset: cardH * index,
         index,
       })}
+      onScrollToIndexFailed={({ index }) => {
+        // Happens when the target row is not yet realised; the offset is
+        // known because every card is exactly one viewport tall.
+        listRef.current?.scrollToOffset({ offset: index * cardH, animated: true });
+      }}
       onEndReached={() => void loadMore()}
       // Two screens of runway, so the next page is already there.
       onEndReachedThreshold={2}
