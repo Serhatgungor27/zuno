@@ -73,21 +73,28 @@ export default function ArtistScreen() {
   }, [id]);
 
   const play = useCallback(
-    (track: ArtistTrack) => {
+    async (track: ArtistTrack) => {
       setNowPlaying({
         title: track.name,
         artist: track.artist,
         image: track.albumImage,
-        url: track.previewUrl,
+        url: null,
         spotifyUrl: track.spotifyUrl,
         historyId: track.trackId,
       });
-      if (!track.previewUrl) {
-        setNowPlaying((p) => (p ? { ...p, error: "No preview for this one" } : p));
-        return;
-      }
       try {
-        player.replace(track.previewUrl);
+        // Spotify names the track, Deezer supplies the sound — Spotify
+        // stopped returning preview_url, so the preview is looked up on tap
+        // rather than shipped with the list. /api/preview caches, so a second
+        // tap on the same track is immediate.
+        const params = new URLSearchParams({ track: track.name, artist: track.artist });
+        const res = await api<{ previewUrl: string | null }>(`/api/preview?${params}`);
+        if (!res.previewUrl) {
+          setNowPlaying((p) => (p ? { ...p, error: "No preview for this one" } : p));
+          return;
+        }
+        setNowPlaying((p) => (p ? { ...p, url: res.previewUrl } : p));
+        player.replace(res.previewUrl);
         try {
           player.loop = true;
         } catch {}
@@ -153,7 +160,7 @@ export default function ArtistScreen() {
         }
         renderItem={({ item, index }) => (
           <Pressable
-            onPress={() => play(item)}
+            onPress={() => void play(item)}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
           >
             <Text style={styles.position}>{index + 1}</Text>
