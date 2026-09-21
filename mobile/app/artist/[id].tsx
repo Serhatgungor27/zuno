@@ -1,0 +1,224 @@
+import { Ionicons } from "@expo/vector-icons";
+import { setAudioModeAsync, useAudioPlayer } from "expo-audio";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  FlatList,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { PlayerSheet, type NowPlaying } from "../../components/PlayerSheet";
+import { TAB_BAR_CLEARANCE } from "../../components/TabBar";
+import { api } from "../../lib/api";
+import { onTabBarScroll, resetTabBar } from "../../lib/tabBarScroll";
+import { theme } from "../../lib/theme";
+import type { ArtistResult, ArtistTrack } from "../../lib/types";
+
+/** One artist's catalogue, reached from search. Tap a row to preview it. */
+export default function ArtistScreen() {
+  const insets = useSafeAreaInsets();
+  const { id } = useLocalSearchParams<{ id: string }>();
+
+  const [artist, setArtist] = useState<ArtistResult | null>(null);
+  const [tracks, setTracks] = useState<ArtistTrack[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
+  const player = useAudioPlayer(null);
+
+  useEffect(() => resetTabBar, []);
+
+  useEffect(() => {
+    setAudioModeAsync({ playsInSilentMode: true }).catch(() => {});
+  }, []);
+
+  // Leaving the screen ends the preview; the screen stays mounted otherwise.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        try {
+          player.pause();
+        } catch {
+          // Nothing loaded.
+        }
+      };
+    }, [player])
+  );
+
+  useEffect(() => {
+    if (!id) return;
+    let alive = true;
+    api<{ artist: ArtistResult; tracks: ArtistTrack[] }>(
+      `/api/artist?id=${encodeURIComponent(id)}`
+    )
+      .then((d) => {
+        if (!alive) return;
+        setArtist(d.artist);
+        setTracks(d.tracks ?? []);
+        setError(null);
+      })
+      .catch((e) =>
+        alive && setError(e instanceof Error ? e.message : "Could not load this artist.")
+      )
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  const play = useCallback(
+    (track: ArtistTrack) => {
+      setNowPlaying({
+        title: track.name,
+        artist: track.artist,
+        image: track.albumImage,
+        url: track.previewUrl,
+        spotifyUrl: track.spotifyUrl,
+        historyId: track.trackId,
+      });
+      if (!track.previewUrl) {
+        setNowPlaying((p) => (p ? { ...p, error: "No preview for this one" } : p));
+        return;
+      }
+      try {
+        player.replace(track.previewUrl);
+        try {
+          player.loop = true;
+        } catch {}
+        player.play();
+      } catch {
+        setNowPlaying((p) => (p ? { ...p, error: "Could not load preview" } : p));
+      }
+    },
+    [player]
+  );
+
+  if (loading) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator color={theme.accent} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.error}>{error}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.screen}>
+      <FlatList
+        data={tracks}
+        keyExtractor={(t) => t.trackId}
+        scrollEventThrottle={16}
+        onScroll={onTabBarScroll}
+        contentContainerStyle={{ paddingBottom: TAB_BAR_CLEARANCE + 24 }}
+        ListHeaderComponent={
+          <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
+            <Pressable
+              onPress={() => router.back()}
+              hitSlop={14}
+              style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+            >
+              <Ionicons name="chevron-back" size={22} color={theme.foreground} />
+            </Pressable>
+
+            {artist?.image ? (
+              <Image source={{ uri: artist.image }} style={styles.portrait} />
+            ) : (
+              <View style={[styles.portrait, styles.portraitFallback]} />
+            )}
+            <Text style={styles.name}>{artist?.name}</Text>
+            <Text style={styles.meta}>
+              {(artist?.fans ?? 0).toLocaleString()} fans · {tracks.length} tracks
+            </Text>
+          </View>
+        }
+        ListEmptyComponent={
+          <Text style={styles.empty}>Nothing with a preview for this artist.</Text>
+        }
+        renderItem={({ item, index }) => (
+          <Pressable
+            onPress={() => play(item)}
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            <Text style={styles.position}>{index + 1}</Text>
+            {item.albumImage ? (
+              <Image source={{ uri: item.albumImage }} style={styles.art} />
+            ) : (
+              <View style={[styles.art, styles.artFallback]} />
+            )}
+            <View style={styles.rowText}>
+              <Text style={styles.track} numberOfLines={1}>
+                {item.name}
+              </Text>
+              <Text style={styles.sub} numberOfLines={1}>
+                {item.artist}
+                {item.explicit ? "  ·  E" : ""}
+              </Text>
+            </View>
+            <Ionicons name="play" size={16} color={theme.muted} />
+          </Pressable>
+        )}
+      />
+
+      {nowPlaying ? (
+        <PlayerSheet
+          track={nowPlaying}
+          player={player}
+          onClose={() => {
+            try {
+              player.pause();
+            } catch {
+              // Nothing loaded.
+            }
+            setNowPlaying(null);
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.background },
+  centered: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: theme.background,
+    paddingHorizontal: 32,
+  },
+  error: { color: "#ff6b6b", fontSize: 15, textAlign: "center" },
+  header: { alignItems: "center", paddingBottom: 18, gap: 6 },
+  back: { position: "absolute", left: 14, top: 8, zIndex: 2, padding: 6 },
+  portrait: { width: 132, height: 132, borderRadius: 66, backgroundColor: theme.surface },
+  portraitFallback: { backgroundColor: theme.surface },
+  name: { color: theme.foreground, fontSize: 24, fontWeight: "700", marginTop: 6 },
+  meta: { color: theme.muted, fontSize: 13 },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+  },
+  position: { color: theme.muted, fontSize: 13, width: 22, textAlign: "center" },
+  art: { width: 46, height: 46, borderRadius: 6, backgroundColor: theme.surface },
+  artFallback: { backgroundColor: theme.surface },
+  rowText: { flex: 1, gap: 2 },
+  track: { color: theme.foreground, fontSize: 15, fontWeight: "600" },
+  sub: { color: theme.muted, fontSize: 13 },
+  pressed: { opacity: 0.6 },
+  empty: { color: theme.muted, fontSize: 15, textAlign: "center", marginTop: 40 },
+});

@@ -18,33 +18,44 @@ import { TAB_BAR_CLEARANCE } from "../../components/TabBar";
 import { api } from "../../lib/api";
 import { onTabBarScroll } from "../../lib/tabBarScroll";
 import { theme } from "../../lib/theme";
-import type { SearchResponse, SearchUser } from "../../lib/types";
+import type { ArtistResult, SearchResponse, SearchUser } from "../../lib/types";
 
 export default function Search() {
   const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
+  const [mode, setMode] = useState<"artists" | "people">("artists");
   const [results, setResults] = useState<SearchUser[]>([]);
+  const [artists, setArtists] = useState<ArtistResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
-  const run = useCallback(async (term: string) => {
+  const run = useCallback(async (term: string, which: "artists" | "people") => {
     const trimmed = term.trim();
     if (!trimmed) {
       setResults([]);
+      setArtists([]);
       setSearched(false);
       return;
     }
     setSearching(true);
     try {
-      const data = await api<SearchResponse>(
-        `/api/search?q=${encodeURIComponent(trimmed)}`
-      );
-      setResults(data.users ?? []);
+      if (which === "people") {
+        const data = await api<SearchResponse>(
+          `/api/search?q=${encodeURIComponent(trimmed)}`
+        );
+        setResults(data.users ?? []);
+      } else {
+        const data = await api<{ artists: ArtistResult[] }>(
+          `/api/artist?q=${encodeURIComponent(trimmed)}`
+        );
+        setArtists(data.artists ?? []);
+      }
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Search failed.");
       setResults([]);
+      setArtists([]);
     } finally {
       setSearching(false);
       setSearched(true);
@@ -54,9 +65,9 @@ export default function Search() {
   // Search as you type, settling briefly so a four-letter name isn't four
   // round trips. Short enough that it still feels immediate.
   useEffect(() => {
-    const id = setTimeout(() => void run(query), 250);
+    const id = setTimeout(() => void run(query, mode), 250);
     return () => clearTimeout(id);
-  }, [query, run]);
+  }, [query, mode, run]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
@@ -66,21 +77,75 @@ export default function Search() {
           style={styles.input}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search people"
+          placeholder={mode === "artists" ? "Search artists" : "Search people"}
           placeholderTextColor={theme.muted}
           autoCapitalize="none"
           autoCorrect={false}
           returnKeyType="search"
           onSubmitEditing={() => {
             Keyboard.dismiss();
-            void run(query);
+            void run(query, mode);
           }}
         />
         {searching ? <ActivityIndicator color={theme.muted} size="small" /> : null}
       </View>
 
+      <View style={styles.modes}>
+        {(["artists", "people"] as const).map((m) => (
+          <Pressable
+            key={m}
+            onPress={() => setMode(m)}
+            style={({ pressed }) => [
+              styles.mode,
+              mode === m && styles.modeOn,
+              pressed && styles.rowPressed,
+            ]}
+          >
+            <Text style={[styles.modeLabel, mode === m && styles.modeLabelOn]}>
+              {m === "artists" ? "Artists" : "People"}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
+      {mode === "artists" ? (
+        <FlatList
+          data={artists}
+          keyExtractor={(a) => a.id}
+          keyboardShouldPersistTaps="handled"
+          scrollEventThrottle={16}
+          onScroll={onTabBarScroll}
+          contentContainerStyle={[styles.listContent, { paddingBottom: TAB_BAR_CLEARANCE }]}
+          ListEmptyComponent={
+            !searching && searched && !error ? (
+              <Text style={styles.empty}>No artists found for “{query.trim()}”.</Text>
+            ) : null
+          }
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() => router.push(`/artist/${item.id}` as never)}
+              style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+            >
+              {item.image ? (
+                <Image source={{ uri: item.image }} style={styles.avatar} />
+              ) : (
+                <View style={[styles.avatar, styles.avatarFallback]} />
+              )}
+              <View style={styles.rowText}>
+                <Text style={styles.name} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <Text style={styles.handle} numberOfLines={1}>
+                  {item.fans.toLocaleString()} fans
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color={theme.muted} />
+            </Pressable>
+          )}
+        />
+      ) : (
       <FlatList
         data={results}
         keyExtractor={(u) => u.spotifyId}
@@ -124,6 +189,7 @@ export default function Search() {
           </Pressable>
         )}
       />
+      )}
     </View>
   );
 }
@@ -143,6 +209,18 @@ const styles = StyleSheet.create({
     borderColor: theme.border,
   },
   input: { flex: 1, color: theme.foreground, fontSize: 16 },
+  modes: { flexDirection: "row", gap: 8, paddingHorizontal: 20, paddingTop: 12 },
+  mode: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: theme.surface,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  modeOn: { backgroundColor: "rgba(255,255,255,0.14)", borderColor: "rgba(255,255,255,0.2)" },
+  modeLabel: { color: theme.muted, fontSize: 13, fontWeight: "600" },
+  modeLabelOn: { color: theme.foreground },
   error: {
     color: "#ff6b6b",
     fontSize: 14,
