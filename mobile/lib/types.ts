@@ -109,6 +109,16 @@ export type VibeComment = {
   user_liked: boolean;
 };
 
+/** GET /api/discover/like */
+export type LikedTrack = {
+  trackId: string;
+  name: string;
+  artist: string;
+  albumImage: string | null;
+  previewUrl: string | null;
+  spotifyUrl: string | null;
+};
+
 /** GET /api/artist?q= */
 export type ArtistResult = {
   id: string;

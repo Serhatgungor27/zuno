@@ -26,6 +26,7 @@ import type {
   Repost,
   Taste,
   ZunoUser,
+  LikedTrack,
 } from "../../lib/types";
 
 const GUTTER = 2;
@@ -35,7 +36,7 @@ const TILE = (Dimensions.get("window").width - GUTTER * 2) / 3;
 // without anyone having to try it.
 const SHELF_CARD_W = Math.round((Dimensions.get("window").width - 32 - 20) / 2.4);
 
-type TabKey = "reposts" | "taste";
+type TabKey = "liked" | "reposts" | "taste";
 
 type Me = { ok: boolean; username: string; avatar_url: string | null };
 
@@ -47,9 +48,12 @@ export default function Profile() {
   const [user, setUser] = useState<ZunoUser | null>(null);
   const [follow, setFollow] = useState<FollowStats | null>(null);
   const [reposts, setReposts] = useState<Repost[]>([]);
+  // Liking something and never seeing it again is the hole in the loop —
+  // a like has to lead somewhere or it is just a vote for the algorithm.
+  const [liked, setLiked] = useState<LikedTrack[]>([]);
   const [taste, setTaste] = useState<Taste | null>(null);
 
-  const [tab, setTab] = useState<TabKey>("reposts");
+  const [tab, setTab] = useState<TabKey>("liked");
   const [nowPlaying, setNowPlaying] = useState<NowPlaying | null>(null);
   const [playingKey, setPlayingKey] = useState<string | undefined>(undefined);
   const player = useAudioPlayer(null);
@@ -87,17 +91,19 @@ export default function Profile() {
 
       const spotifyHandle = account?.user?.username ?? account?.user?.spotify_id;
 
-      const [f, r, t] = await Promise.all([
+      const [f, r, t, l] = await Promise.all([
         spotifyHandle
           ? api<FollowStats>(`/api/follow?userId=${encodeURIComponent(spotifyHandle)}`).catch(() => null)
           : null,
         api<{ reposts: Repost[] }>(`/api/repost?username=${encodeURIComponent(profile.username)}`).catch(() => null),
         api<Taste>("/api/taste").catch(() => null),
+        api<{ tracks: LikedTrack[] }>("/api/discover/like").catch(() => null),
       ]);
 
       setFollow(f);
       setReposts(r?.reposts ?? []);
       setTaste(t);
+      setLiked(l?.tracks ?? []);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load your profile.");
@@ -134,6 +140,17 @@ export default function Profile() {
         historyId: item.historyId ?? item.trackId,
       });
       try {
+        // A liked track already carries its preview; only look one up when it
+        // does not.
+        if (item.previewUrl) {
+          setNowPlaying((p) => (p ? { ...p, url: item.previewUrl ?? null } : p));
+          player.replace(item.previewUrl);
+          try {
+            player.loop = true;
+          } catch {}
+          player.play();
+          return;
+        }
         const params = new URLSearchParams({ track: item.label, artist: item.artist });
         if (item.trackId) params.set("trackId", item.trackId);
         const res = await api<{ previewUrl: string | null }>(`/api/preview?${params}`);
@@ -235,14 +252,31 @@ export default function Profile() {
       </View>
 
       <View style={styles.tabs}>
+        <TabButton icon="heart" label="Liked" active={tab === "liked"} onPress={() => setTab("liked")} />
         <TabButton icon="repeat" label="Reposts" active={tab === "reposts"} onPress={() => setTab("reposts")} />
-        <TabButton icon="heart" label="Taste" active={tab === "taste"} onPress={() => setTab("taste")} />
+        <TabButton icon="sparkles" label="Taste" active={tab === "taste"} onPress={() => setTab("taste")} />
       </View>
 
       <View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
-      {tab === "reposts" ? (
+      {tab === "liked" ? (
+        <Grid
+          items={liked.map((l) => ({
+            key: l.trackId,
+            image: l.albumImage,
+            label: l.name,
+            artist: l.artist,
+            trackId: l.trackId,
+            previewUrl: l.previewUrl,
+            spotifyUrl: l.spotifyUrl,
+          }))}
+          emptyTitle="Nothing liked yet"
+          emptyBody="Tap the heart on a track in Discover and it lands here."
+          onPress={playTrack}
+          playingKey={playingKey}
+        />
+      ) : tab === "reposts" ? (
         <Grid
           items={reposts.map((r) => ({
             key: r.id,
@@ -268,8 +302,9 @@ export default function Profile() {
         which collapsed the row. */}
     {scrollY >= headerHeight && headerHeight > 0 ? (
       <View style={[styles.tabs, styles.tabsPinned, { top: insets.top }]}>
+        <TabButton icon="heart" label="Liked" active={tab === "liked"} onPress={() => setTab("liked")} />
         <TabButton icon="repeat" label="Reposts" active={tab === "reposts"} onPress={() => setTab("reposts")} />
-        <TabButton icon="heart" label="Taste" active={tab === "taste"} onPress={() => setTab("taste")} />
+        <TabButton icon="sparkles" label="Taste" active={tab === "taste"} onPress={() => setTab("taste")} />
       </View>
     ) : null}
 
@@ -307,7 +342,7 @@ function TabButton({
   active,
   onPress,
 }: {
-  icon: "grid" | "repeat" | "heart";
+  icon: "grid" | "repeat" | "heart" | "sparkles";
   label: string;
   active: boolean;
   onPress: () => void;
@@ -327,6 +362,8 @@ function TabButton({
 
 type GridItem = {
   key: string;
+  /** A preview already known, so the sheet need not look one up. */
+  previewUrl?: string | null;
   /** The listening_history row, when this tile is a real play. */
   historyId?: string;
   image: string | null;
